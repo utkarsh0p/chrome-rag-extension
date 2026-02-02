@@ -1,22 +1,38 @@
 document.addEventListener("DOMContentLoaded", () => {
   const askBtn = document.getElementById("ask");
   const input = document.getElementById("query");
-  const output = document.getElementById("answer");
+  const output = document.getElementById("chatBody"); // FIXED
 
   if (!askBtn || !input || !output) {
     console.error("Popup elements not found");
     return;
   }
 
+  // Enter key support
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      askBtn.click();
+    }
+  });
+
   askBtn.addEventListener("click", async () => {
     const query = input.value.trim();
+    if (!query) return;
 
-    if (!query) {
-      output.innerText = "Please enter a question.";
-      return;
-    }
+    // show user message
+    const userMsg = document.createElement("div");
+    userMsg.className = "message user-message";
+    userMsg.innerText = query;
+    output.appendChild(userMsg);
 
-    output.innerText = "Thinking...";
+    input.value = "";
+
+    // thinking message
+    const thinkingMsg = document.createElement("div");
+    thinkingMsg.className = "message bot-message";
+    thinkingMsg.innerText = "Thinking...";
+    output.appendChild(thinkingMsg);
 
     try {
       const [tab] = await chrome.tabs.query({
@@ -29,12 +45,12 @@ document.addEventListener("DOMContentLoaded", () => {
         { type: "GET_PAGE_DATA" },
         (response) => {
           if (chrome.runtime.lastError) {
-            output.innerText = "Content script not loaded on this page.";
+            thinkingMsg.innerText = "Content script not loaded on this page.";
             return;
           }
 
           if (!response || !response.chunks) {
-            output.innerText = "Could not read page content.";
+            thinkingMsg.innerText = "Could not read page content.";
             return;
           }
 
@@ -47,21 +63,21 @@ document.addEventListener("DOMContentLoaded", () => {
             { type: "ASK_BACKEND", payload },
             (res) => {
               if (chrome.runtime.lastError) {
-                output.innerText = "Backend not reachable.";
+                thinkingMsg.innerText = "Backend not reachable.";
                 return;
               }
 
               if (res?.error) {
-                output.innerText = "Error: " + res.error;
+                thinkingMsg.innerText = "Error: " + res.error;
               } else {
-                output.innerText = res.answer;
+                thinkingMsg.innerText = res.answer;
               }
             }
           );
         }
       );
     } catch (err) {
-      output.innerText = "Unexpected error: " + err.message;
+      thinkingMsg.innerText = "Unexpected error: " + err.message;
     }
   });
 });
