@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Page Chat</title>
+  <style>
+    body {
+      width: 320px;
+      font-family: Arial, sans-serif;
+      padding: 10px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 60px;
+      resize: none;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 8px;
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    #answer {
+      margin-top: 10px;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+
+<body>
+  <h3>Page Chat</h3>
+
+  <textarea id="query" placeholder="Ask something about this page..."></textarea>
+
+  <button id="ask">Ask</button>
+
+  <div id="answer"></div>
+
+  <script src="./popup.js"></script>
+</body>
+</html>
