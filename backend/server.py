@@ -25,6 +25,10 @@ def chat():
     data = request.json
     query = data["query"]
     chunks = data["chunks"]
+    token = request.headers.get("Token")
+    print(token)
+    print(dict(request.headers))
+
 
     doc_vectors = embedding.embed_documents(chunks)
     query_vector = embedding.embed_query(query)
