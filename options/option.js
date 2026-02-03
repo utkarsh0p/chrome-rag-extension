@@ -3,14 +3,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const saveBtn = document.getElementById("saveBtn");
   const status = document.getElementById("status");
 
-  // Load saved token
+  if (!tokenInput || !saveBtn || !status) {
+    console.error("One or more elements not found");
+    return;
+  }
+
   chrome.storage.local.get("hfToken", (res) => {
     if (res.hfToken) {
       tokenInput.value = res.hfToken;
     }
   });
 
-  // Save token
   saveBtn.addEventListener("click", () => {
     const token = tokenInput.value.trim();
 

@@ -7,7 +7,8 @@
 
   "permissions": [
     "activeTab",
-    "tabs"
+    "tabs",
+    "storage"
   ],
 
   "host_permissions": [
@@ -29,5 +30,6 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "options_page":"options/option.html"
 }
