@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
               }
 
               if (res?.error) {
-                thinkingMsg.innerText = "Error: " + res.error;
+                thinkingMsg.innerText = "Error: " + "hf_token not valid \n\nGENERATE TOKEN\nFollow link - https://huggingface.co\n1. Make your account\n2. Go to profile and select Access Token\n3. Select token type-Read (*imp*)\n\n\nRELOAD EXTENSION\n1. Go on url chrome://extensions\n2.Reload the extension\n3. Enter the hf_access_token";
               } else {
                 thinkingMsg.innerText = res.answer;
               }

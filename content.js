@@ -12,7 +12,14 @@ function chunkText(text, chunkSize = 500) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "GET_PAGE_DATA") {
-    const pageText = document.body.innerText || "";
+
+    function getCleanedText() {
+      const rawText = document.body.innerText;
+      const cleanedText = rawText.replace(/[\n\t]+/g, ' ').trim();
+
+      return cleanedText;
+    }
+    const pageText = getCleanedText() || "";
     const chunks = chunkText(pageText);
 
     sendResponse({ chunks });
