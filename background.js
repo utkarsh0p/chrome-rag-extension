@@ -1,14 +1,17 @@
-chrome.runtime.onInstalled.addListener(()=>{
-  chrome.runtime.openOptionsPage()
-})
-
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ASK_BACKEND") {
 
-    chrome.storage.local.get("hfToken", (res) => {
-      if (!res.hfToken) {
-        sendResponse({ error: "No access token provided" });
+    chrome.storage.local.get(['apiProvider', 'apiKey', 'hfToken'], (res) => {
+      // Support legacy hfToken storage
+      const provider = res.apiProvider || 'huggingface';
+      const key      = res.apiKey || res.hfToken;
+
+      if (!key) {
+        sendResponse({ error: "No API key found. Please open extension options and add your key." });
         return;
       }
 
@@ -16,7 +19,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Token": res.hfToken
+          "Token":    key,
+          "Provider": provider
         },
         body: JSON.stringify(message.payload)
       })
@@ -28,4 +32,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
-

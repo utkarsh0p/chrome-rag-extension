@@ -1,9 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Page Chat",
+  "name": "SiteWhisper",
   "version": "1.0",
+  "description": "Ask questions about any webpage using AI",
 
-  "description": "Ask questions about the current page",
+  "icons": {
+    "16":  "icons/icon16.png",
+    "32":  "icons/icon32.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
 
   "permissions": [
     "activeTab",
@@ -17,7 +23,11 @@
   ],
 
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   },
 
   "background": {
@@ -31,5 +41,6 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page":"options/option.html"
+
+  "options_page": "options/option.html"
 }

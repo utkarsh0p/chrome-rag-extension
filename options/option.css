@@ -1,64 +1,217 @@
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #f5f5f0;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #111111;
 }
 
 .container {
   background: #ffffff;
-  width: 360px;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  width: 400px;
+  padding: 28px 24px 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e0e0d8;
 }
 
 h2 {
-  margin-top: 0;
+  font-size: 20px;
+  font-weight: 700;
   text-align: center;
+  color: #111111;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  text-align: center;
+  color: #666660;
+  margin-bottom: 20px;
+}
+
+/* ── Provider Cards ── */
+.provider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px;
+  border: 2px solid #e0e0d8;
+  border-radius: 12px;
+  background: #f5f5f0;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  font-family: inherit;
+  position: relative;
+}
+
+.provider-card:hover {
+  border-color: #aaaaaa;
+  background: #ececea;
+  transform: translateY(-1px);
+}
+
+.provider-card.selected {
+  border-color: #111111;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.provider-card.selected::after {
+  content: "✓";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #111111;
+}
+
+.provider-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.claude-icon  { color: #c96442; }
+.gemini-icon  { color: #4285f4; }
+.openai-icon  { color: #10a37f; }
+.hf-icon      { font-size: 20px; }
+
+.provider-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111111;
+}
+
+.provider-sub {
+  font-size: 11px;
+  color: #888882;
+}
+
+/* ── Key Input Section ── */
+.key-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111111;
 }
 
-input {
+.input-wrapper {
+  position: relative;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d1c8;
+  font-size: 14px;
+  background: #f5f5f0;
+  color: #111111;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: monospace;
+  letter-spacing: 0.04em;
+}
+
+.input-wrapper input:focus {
+  border-color: #111111;
+  background: #ffffff;
+}
+
+.toggle-visibility {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888882;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  width: auto;
+  margin: 0;
+}
+
+.toggle-visibility:hover {
+  color: #111111;
+  background: none;
+}
+
+.hint {
+  font-size: 12px;
+  color: #888882;
+  min-height: 16px;
+}
+
+.hint a {
+  color: #111111;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.save-btn {
   width: 100%;
   margin-top: 6px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  font-size: 14px;
-}
-
-button {
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px;
+  padding: 11px;
   border: none;
-  border-radius: 8px;
-  background: #6366f1;
-  color: white;
+  border-radius: 10px;
+  background: #111111;
+  color: #f5f5f0;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  font-family: inherit;
 }
 
-button:hover {
-  background: #4f46e5;
+.save-btn:hover {
+  background: #333333;
+  transform: translateY(-1px);
+}
+
+.save-btn:active {
+  transform: translateY(0);
+}
+
+.save-btn:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+  transform: none;
 }
 
 #status {
-  margin-top: 10px;
+  margin-top: 12px;
   text-align: center;
   font-size: 13px;
   color: #16a34a;
+  min-height: 18px;
+}
+
+#status.error {
+  color: #dc2626;
 }

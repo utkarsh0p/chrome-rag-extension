@@ -1,0 +1,39 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Greater-than chevron — left body of the X, with inner track effect -->
+  <path d="M16 11 L57 50 L16 89"
+        stroke="#1a1a1a" stroke-width="11"
+        stroke-linejoin="miter" stroke-linecap="round"/>
+  <path d="M16 11 L57 50 L16 89"
+        stroke="#ffffff" stroke-width="5"
+        stroke-linejoin="miter" stroke-linecap="round"/>
+
+  <!-- D arc — right enclosure, with inner track effect -->
+  <path d="M57 14 A39 39 0 0 1 57 86"
+        stroke="#1a1a1a" stroke-width="10"
+        stroke-linecap="round"/>
+  <path d="M57 14 A39 39 0 0 1 57 86"
+        stroke="#ffffff" stroke-width="4.5"
+        stroke-linecap="round"/>
+
+  <!-- Radial spokes from center (57, 50) — wheel/compass inside the D -->
+  <!-- Right -->
+  <line x1="57" y1="50" x2="90" y2="50" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+  <line x1="57" y1="50" x2="90" y2="50" stroke="#ffffff" stroke-width="3"   stroke-linecap="round"/>
+  <!-- Upper-right -->
+  <line x1="57" y1="50" x2="80" y2="24" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+  <line x1="57" y1="50" x2="80" y2="24" stroke="#ffffff" stroke-width="3"   stroke-linecap="round"/>
+  <!-- Lower-right -->
+  <line x1="57" y1="50" x2="80" y2="76" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+  <line x1="57" y1="50" x2="80" y2="76" stroke="#ffffff" stroke-width="3"   stroke-linecap="round"/>
+  <!-- Up -->
+  <line x1="57" y1="50" x2="57" y2="18" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+  <line x1="57" y1="50" x2="57" y2="18" stroke="#ffffff" stroke-width="3"   stroke-linecap="round"/>
+  <!-- Down -->
+  <line x1="57" y1="50" x2="57" y2="82" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+  <line x1="57" y1="50" x2="57" y2="82" stroke="#ffffff" stroke-width="3"   stroke-linecap="round"/>
+
+  <!-- Starburst glow at intersection center -->
+  <circle cx="57" cy="50" r="9"  fill="white" opacity="0.85"/>
+  <circle cx="57" cy="50" r="5"  fill="white"/>
+  <circle cx="57" cy="50" r="3"  fill="#1a1a1a"/>
+</svg>

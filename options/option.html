@@ -3,21 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Options</title>
+  <title>Setup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="option.css" />
 </head>
 <body>
   <div class="container">
-    <h2>Hugging Face Settings</h2>
+    <h2>Choose your AI</h2>
+    <p class="subtitle">Select a provider and paste your API key</p>
 
-    <label for="token">Access Token</label>
-    <input
-      type="password"
-      id="token"
-      placeholder="hf_xxxxxxxxxxxxxxxxx"
-    />
+    <div class="provider-grid">
+      <button class="provider-card" data-provider="claude">
+        <span class="provider-icon claude-icon">◆</span>
+        <span class="provider-name">Claude</span>
+        <span class="provider-sub">Anthropic</span>
+      </button>
+      <button class="provider-card" data-provider="gemini">
+        <span class="provider-icon gemini-icon">✦</span>
+        <span class="provider-name">Gemini</span>
+        <span class="provider-sub">Google</span>
+      </button>
+      <button class="provider-card" data-provider="openai">
+        <span class="provider-icon openai-icon">⬡</span>
+        <span class="provider-name">GPT</span>
+        <span class="provider-sub">OpenAI</span>
+      </button>
+      <button class="provider-card" data-provider="huggingface">
+        <span class="provider-icon hf-icon">🤗</span>
+        <span class="provider-name">Inference</span>
+        <span class="provider-sub">HuggingFace</span>
+      </button>
+    </div>
 
-    <button id="saveBtn">Save Token</button>
+    <div class="key-section" id="keySection">
+      <label for="apiKey" id="keyLabel">API Key</label>
+      <div class="input-wrapper">
+        <input
+          type="password"
+          id="apiKey"
+          placeholder="Enter your API key..."
+          autocomplete="off"
+        />
+        <button class="toggle-visibility" id="toggleBtn" type="button" title="Show/hide key">
+          <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+          <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="display:none">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="hint" id="keyHint"></div>
+
+      <button class="save-btn" id="saveBtn">Save &amp; Start Chatting</button>
+    </div>
 
     <p id="status"></p>
   </div>

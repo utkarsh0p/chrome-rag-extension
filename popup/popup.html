@@ -2,28 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Page Chat</title>
+  <title>SiteWhisper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="popup.css" />
 </head>
 
 <body>
-  <div class="chat-container">
-    <div class="chat-header">Page Chat</div>
+  <div class="popup-shell">
 
-    <!-- FIX: use chatBody as output -->
-    <div class="chat-body" id="chatBody">
-      <div class="message bot-message">Ask query related to this page</div>
+    <!-- ── Branding header ── -->
+    <div class="popup-header">
+      <div class="brand">
+        <!-- Logo SVG (inline recreation of the X+D+starburst mark) -->
+        <svg class="brand-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 11 L57 50 L16 89" stroke="#1a1a1a" stroke-width="11" stroke-linejoin="miter" stroke-linecap="round"/>
+          <path d="M16 11 L57 50 L16 89" stroke="#fafaf8" stroke-width="5"  stroke-linejoin="miter" stroke-linecap="round"/>
+          <path d="M57 14 A39 39 0 0 1 57 86" stroke="#1a1a1a" stroke-width="10" stroke-linecap="round"/>
+          <path d="M57 14 A39 39 0 0 1 57 86" stroke="#fafaf8" stroke-width="4.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="90" y2="50" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="90" y2="50" stroke="#fafaf8" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="80" y2="24" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="80" y2="24" stroke="#fafaf8" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="80" y2="76" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="80" y2="76" stroke="#fafaf8" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="57" y2="18" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="57" y2="18" stroke="#fafaf8" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="57" y2="82" stroke="#1a1a1a" stroke-width="6.5" stroke-linecap="round"/>
+          <line x1="57" y1="50" x2="57" y2="82" stroke="#fafaf8" stroke-width="3"   stroke-linecap="round"/>
+          <circle cx="57" cy="50" r="9" fill="#fafaf8" opacity="0.9"/>
+          <circle cx="57" cy="50" r="5" fill="white"/>
+          <circle cx="57" cy="50" r="3" fill="#1a1a1a"/>
+        </svg>
+        <span class="brand-name">SiteWhisper</span>
+      </div>
+      <button class="settings-btn" id="settingsBtn" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
     </div>
 
-    <div class="chat-input">
-      <textarea
-        id="query"
-        placeholder="Type your question..."
-      ></textarea>
-      <button id="ask">Send</button>
+    <!-- ── Chat messages (hidden until first message) ── -->
+    <div class="chat-body" id="chatBody"></div>
+
+    <!-- ── Input card ── -->
+    <div class="input-area">
+      <div class="input-card">
+        <textarea
+          id="query"
+          placeholder="Ask anything about this page…"
+          rows="1"
+        ></textarea>
+
+        <div class="input-footer">
+          <!-- Model selector -->
+          <div class="model-selector" id="modelSelector">
+            <button class="model-btn" id="modelBtn" type="button">
+              <span class="model-btn-inner" id="modelBtnInner">
+                <span class="model-icon" id="modelIcon"></span>
+                <span class="model-label" id="modelLabel">Loading…</span>
+                <svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </span>
+            </button>
+            <div class="model-dropdown" id="modelDropdown"></div>
+          </div>
+
+          <!-- Send button -->
+          <button class="send-btn" id="ask" type="button" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
+
   </div>
-
   <script src="popup.js"></script>
 </body>
 </html>
