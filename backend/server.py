@@ -1,10 +1,12 @@
 import asyncio
+import json
 from functools import lru_cache
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -18,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-LLM_TIMEOUT = 30  # seconds
+LLM_TIMEOUT = 60  # seconds
 
 
 # ── Cached client factories ────────────────────────────────────────────────────
@@ -27,7 +29,7 @@ LLM_TIMEOUT = 30  # seconds
 def get_openai_clients(token: str, model_id: str):
     from langchain_openai import ChatOpenAI, OpenAIEmbeddings
     embedding = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=token)
-    llm       = ChatOpenAI(model=model_id, openai_api_key=token)
+    llm       = ChatOpenAI(model=model_id, openai_api_key=token, streaming=True)
     return llm, embedding
 
 
@@ -35,14 +37,14 @@ def get_openai_clients(token: str, model_id: str):
 def get_gemini_clients(token: str, model_id: str):
     from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
     embedding = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=token)
-    llm       = ChatGoogleGenerativeAI(model=model_id, google_api_key=token)
+    llm       = ChatGoogleGenerativeAI(model=model_id, google_api_key=token, streaming=True)
     return llm, embedding
 
 
 @lru_cache(maxsize=256)
 def get_claude_client(token: str, model_id: str):
     from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(model=model_id, anthropic_api_key=token)
+    return ChatAnthropic(model=model_id, anthropic_api_key=token, streaming=True)
 
 
 @lru_cache(maxsize=256)
@@ -67,8 +69,7 @@ def get_hf_clients(token: str, model_id: str):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def get_top_chunks(query: str, chunks: list[str], embedding=None) -> str:
-    """Return top-3 most relevant chunks via cosine similarity or TF-IDF fallback."""
+def get_top_chunks(query: str, chunks: list, embedding=None) -> str:
     if embedding:
         doc_vectors  = embedding.embed_documents(chunks)
         query_vector = embedding.embed_query(query)
@@ -82,21 +83,29 @@ def get_top_chunks(query: str, chunks: list[str], embedding=None) -> str:
     return "\n\n".join(chunks[i] for i, _ in top_indices)
 
 
-def extract_text(response) -> str:
-    if isinstance(response, str):
-        return response
-    if hasattr(response, "content"):
-        return response.content
-    return str(response)
+def extract_chunk(chunk) -> str:
+    if isinstance(chunk, str):
+        return chunk
+    if hasattr(chunk, "content"):
+        c = chunk.content
+        return c if isinstance(c, str) else ""
+    return ""
 
 
-# ── Request model ──────────────────────────────────────────────────────────────
+# ── Request models ─────────────────────────────────────────────────────────────
 
 class RAGRequest(BaseModel):
     query: str
     chunks: list[str]
     model: Optional[str] = None
     provider: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    query: str
+    model: Optional[str] = None
+    provider: Optional[str] = None
+    history: Optional[list[dict]] = None  # [{"role": "user"|"assistant", "content": "..."}]
 
 
 # ── Endpoint ───────────────────────────────────────────────────────────────────
@@ -119,54 +128,204 @@ async def rag(
 
     try:
         if provider == "openai":
-            model_id      = body.model or "gpt-4o-mini"
+            model_id       = body.model or "gpt-4.1-mini"
             llm, embedding = get_openai_clients(token, model_id)
-            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
+            context        = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
         elif provider == "gemini":
-            model_id      = body.model or "gemini-2.0-flash"
+            model_id       = body.model or "gemini-2.5-flash"
             llm, embedding = get_gemini_clients(token, model_id)
-            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
+            context        = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
         elif provider == "claude":
-            model_id = body.model or "claude-haiku-4-5-20251001"
+            model_id = body.model or "claude-haiku-4-5"
             llm      = get_claude_client(token, model_id)
             context  = await run_in_threadpool(get_top_chunks, query, chunks)
 
         else:  # huggingface
-            model_id      = body.model or "meta-llama/Llama-3.1-8B-Instruct"
+            model_id       = body.model or "meta-llama/Llama-3.1-8B-Instruct"
             llm, embedding = get_hf_clients(token, model_id)
-            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
-
-        prompt = (
-            "Answer the question using ONLY the context below. "
-            "Be concise and direct.\n\n"
-            f"Context:\n{context}\n\n"
-            f"Question:\n{query}"
-        )
-
-        response = await asyncio.wait_for(
-            run_in_threadpool(llm.invoke, prompt),
-            timeout=LLM_TIMEOUT,
-        )
-        return {"answer": extract_text(response)}
-
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"LLM did not respond within {LLM_TIMEOUT}s. Try again.")
-
-    except ImportError as e:
-        pkg = str(e).split("'")[1] if "'" in str(e) else str(e)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Provider package not installed: {pkg}. "
-                   "Run: pip install langchain-openai langchain-google-genai langchain-anthropic",
-        )
+            context        = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
     except Exception as e:
         msg = str(e)
         if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
             raise HTTPException(status_code=401, detail=f"Invalid API key for {provider}. Check your key in Settings.")
         raise HTTPException(status_code=500, detail=f"Server error ({provider}): {msg}")
+
+    prompt = (
+        "Answer the question using ONLY the context below. "
+        "Be concise and direct.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question:\n{query}"
+    )
+
+    async def generate():
+        try:
+            async with asyncio.timeout(LLM_TIMEOUT):
+                async for chunk in llm.astream(prompt):
+                    text = extract_chunk(chunk)
+                    if text:
+                        yield f"data: {json.dumps({'text': text})}\n\n"
+        except TimeoutError:
+            yield f"data: {json.dumps({'error': f'LLM did not respond within {LLM_TIMEOUT}s. Try again.'})}\n\n"
+        except Exception as e:
+            msg = str(e)
+            if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+                yield f"data: {json.dumps({'error': f'Invalid API key for {provider}. Check your key in Settings.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'Stream error ({provider}): {msg}'})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ── /code endpoint (LeetCode solver) ──────────────────────────────────────────
+
+class CodeRequest(BaseModel):
+    title: str
+    description: str
+    language: str = "Python3"
+    current_code: Optional[str] = None
+    instruction: Optional[str] = None   # e.g. "optimize for space complexity"
+    model: Optional[str] = None
+    provider: Optional[str] = None
+
+
+@app.post("/code")
+async def code(
+    body: CodeRequest,
+    token: str    = Header(..., alias="Token"),
+    provider: str = Header("huggingface", alias="Provider"),
+):
+    token    = token.strip()
+    provider = provider.lower()
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No API key provided.")
+
+    try:
+        if provider == "openai":
+            model_id = body.model or "gpt-4.1-mini"
+            llm, _   = get_openai_clients(token, model_id)
+        elif provider == "gemini":
+            model_id = body.model or "gemini-2.5-flash"
+            llm, _   = get_gemini_clients(token, model_id)
+        elif provider == "claude":
+            model_id = body.model or "claude-haiku-4-5"
+            llm      = get_claude_client(token, model_id)
+        else:
+            model_id = body.model or "meta-llama/Llama-3.1-8B-Instruct"
+            llm, _   = get_hf_clients(token, model_id)
+    except Exception as e:
+        msg = str(e)
+        if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+            raise HTTPException(status_code=401, detail=f"Invalid API key for {provider}.")
+        raise HTTPException(status_code=500, detail=f"Server error: {msg}")
+
+    extra = f"\n\nAdditional instruction: {body.instruction}" if body.instruction else ""
+    signature_hint = (
+        f"\n\nThe editor currently contains this starter code — preserve the class/function signature:\n```\n{body.current_code}\n```"
+        if body.current_code else ""
+    )
+
+    prompt = (
+        f"You are an expert competitive programmer.\n"
+        f"Solve the following LeetCode problem in {body.language}.\n"
+        f"Return ONLY the solution code — no explanation, no markdown fences, no extra text.\n"
+        f"The code must be directly pasteable into the LeetCode editor.{extra}{signature_hint}\n\n"
+        f"Problem: {body.title}\n\n"
+        f"{body.description}"
+    )
+
+    async def generate():
+        try:
+            async with asyncio.timeout(LLM_TIMEOUT):
+                async for chunk in llm.astream(prompt):
+                    text = extract_chunk(chunk)
+                    if text:
+                        yield f"data: {json.dumps({'text': text})}\n\n"
+        except TimeoutError:
+            yield f"data: {json.dumps({'error': f'LLM timed out after {LLM_TIMEOUT}s.'})}\n\n"
+        except Exception as e:
+            msg = str(e)
+            if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+                yield f"data: {json.dumps({'error': f'Invalid API key for {provider}.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'Stream error: {msg}'})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ── /chat endpoint (direct LLM, no retrieval) ─────────────────────────────────
+
+@app.post("/chat")
+async def chat(
+    body: ChatRequest,
+    token: str    = Header(..., alias="Token"),
+    provider: str = Header("huggingface", alias="Provider"),
+):
+    token    = token.strip()
+    provider = provider.lower()
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No API key provided. Open Settings and add your key.")
+
+    try:
+        if provider == "openai":
+            model_id = body.model or "gpt-4.1-mini"
+            llm, _   = get_openai_clients(token, model_id)
+
+        elif provider == "gemini":
+            model_id = body.model or "gemini-2.5-flash"
+            llm, _   = get_gemini_clients(token, model_id)
+
+        elif provider == "claude":
+            model_id = body.model or "claude-haiku-4-5"
+            llm      = get_claude_client(token, model_id)
+
+        else:  # huggingface
+            model_id = body.model or "meta-llama/Llama-3.1-8B-Instruct"
+            llm, _   = get_hf_clients(token, model_id)
+
+    except Exception as e:
+        msg = str(e)
+        if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+            raise HTTPException(status_code=401, detail=f"Invalid API key for {provider}. Check your key in Settings.")
+        raise HTTPException(status_code=500, detail=f"Server error ({provider}): {msg}")
+
+    # Build message list with optional history
+    from langchain_core.messages import HumanMessage, AIMessage
+    messages = []
+    for h in (body.history or []):
+        if h.get("role") == "user":
+            messages.append(HumanMessage(content=h["content"]))
+        elif h.get("role") == "assistant":
+            messages.append(AIMessage(content=h["content"]))
+    messages.append(HumanMessage(content=body.query))
+
+    async def generate():
+        try:
+            async with asyncio.timeout(LLM_TIMEOUT):
+                async for chunk in llm.astream(messages):
+                    text = extract_chunk(chunk)
+                    if text:
+                        yield f"data: {json.dumps({'text': text})}\n\n"
+        except TimeoutError:
+            yield f"data: {json.dumps({'error': f'LLM did not respond within {LLM_TIMEOUT}s. Try again.'})}\n\n"
+        except Exception as e:
+            msg = str(e)
+            if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+                yield f"data: {json.dumps({'error': f'Invalid API key for {provider}. Check your key in Settings.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'Stream error ({provider}): {msg}'})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
