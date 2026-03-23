@@ -1,13 +1,73 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from sklearn.metrics.pairwise import cosine_similarity
+import asyncio
+from functools import lru_cache
+from typing import Optional
+
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+LLM_TIMEOUT = 30  # seconds
 
 
-def get_top_chunks(query, chunks, embedding=None):
+# ── Cached client factories ────────────────────────────────────────────────────
+
+@lru_cache(maxsize=256)
+def get_openai_clients(token: str, model_id: str):
+    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    embedding = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=token)
+    llm       = ChatOpenAI(model=model_id, openai_api_key=token)
+    return llm, embedding
+
+
+@lru_cache(maxsize=256)
+def get_gemini_clients(token: str, model_id: str):
+    from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+    embedding = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=token)
+    llm       = ChatGoogleGenerativeAI(model=model_id, google_api_key=token)
+    return llm, embedding
+
+
+@lru_cache(maxsize=256)
+def get_claude_client(token: str, model_id: str):
+    from langchain_anthropic import ChatAnthropic
+    return ChatAnthropic(model=model_id, anthropic_api_key=token)
+
+
+@lru_cache(maxsize=256)
+def get_hf_clients(token: str, model_id: str):
+    from langchain_huggingface import (
+        ChatHuggingFace,
+        HuggingFaceEndpoint,
+        HuggingFaceEndpointEmbeddings,
+    )
+    embedding = HuggingFaceEndpointEmbeddings(
+        repo_id="sentence-transformers/all-MiniLM-L6-v2",
+        huggingfacehub_api_token=token,
+    )
+    hf_model = HuggingFaceEndpoint(
+        repo_id=model_id,
+        task="text-generation",
+        huggingfacehub_api_token=token,
+    )
+    llm = ChatHuggingFace(llm=hf_model)
+    return llm, embedding
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def get_top_chunks(query: str, chunks: list[str], embedding=None) -> str:
     """Return top-3 most relevant chunks via cosine similarity or TF-IDF fallback."""
     if embedding:
         doc_vectors  = embedding.embed_documents(chunks)
@@ -22,8 +82,7 @@ def get_top_chunks(query, chunks, embedding=None):
     return "\n\n".join(chunks[i] for i, _ in top_indices)
 
 
-def extract_text(response):
-    """Normalise LLM response to a plain string regardless of provider."""
+def extract_text(response) -> str:
     if isinstance(response, str):
         return response
     if hasattr(response, "content"):
@@ -31,69 +90,53 @@ def extract_text(response):
     return str(response)
 
 
-@app.route("/chat", methods=["POST"])
-def chat():
+# ── Request model ──────────────────────────────────────────────────────────────
+
+class RAGRequest(BaseModel):
+    query: str
+    chunks: list[str]
+    model: Optional[str] = None
+    provider: Optional[str] = None
+
+
+# ── Endpoint ───────────────────────────────────────────────────────────────────
+
+@app.post("/rag")
+async def rag(
+    body: RAGRequest,
+    token: str    = Header(..., alias="Token"),
+    provider: str = Header("huggingface", alias="Provider"),
+):
+    token    = token.strip()
+    provider = provider.lower()
+    query    = body.query
+    chunks   = body.chunks
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No API key provided. Open Settings and add your key.")
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No page content received.")
+
     try:
-        data     = request.json
-        query    = data["query"]
-        chunks   = data["chunks"]
-        model_id = data.get("model")
-        token    = request.headers.get("Token", "").strip()
-        provider = request.headers.get("Provider", "huggingface").lower()
-
-        if not token:
-            return jsonify({"error": "No API key provided. Open Settings and add your key."}), 400
-
-        if not chunks:
-            return jsonify({"error": "No page content received."}), 400
-
-        # ── Build LLM + context per provider ─────────────────────────────────
-
         if provider == "openai":
-            from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-            embedding = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=token)
-            llm       = ChatOpenAI(model=model_id or "gpt-4o-mini", openai_api_key=token)
-            context   = get_top_chunks(query, chunks, embedding)
+            model_id      = body.model or "gpt-4o-mini"
+            llm, embedding = get_openai_clients(token, model_id)
+            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
         elif provider == "gemini":
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-            embedding = GoogleGenerativeAIEmbeddings(
-                model="gemini-embedding-001",
-                google_api_key=token
-            )
-            llm     = ChatGoogleGenerativeAI(
-                model=model_id or "gemini-2.0-flash",
-                google_api_key=token
-            )
-            context = get_top_chunks(query, chunks, embedding)
+            model_id      = body.model or "gemini-2.0-flash"
+            llm, embedding = get_gemini_clients(token, model_id)
+            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
         elif provider == "claude":
-            from langchain_anthropic import ChatAnthropic
-            llm     = ChatAnthropic(
-                model=model_id or "claude-haiku-4-5-20251001",
-                anthropic_api_key=token
-            )
-            context = get_top_chunks(query, chunks)  # TF-IDF — Anthropic has no embeddings API
+            model_id = body.model or "claude-haiku-4-5-20251001"
+            llm      = get_claude_client(token, model_id)
+            context  = await run_in_threadpool(get_top_chunks, query, chunks)
 
         else:  # huggingface
-            from langchain_huggingface import (
-                HuggingFaceEndpointEmbeddings,
-                HuggingFaceEndpoint,
-                ChatHuggingFace,
-            )
-            embedding = HuggingFaceEndpointEmbeddings(
-                repo_id="sentence-transformers/all-MiniLM-L6-v2",
-                huggingfacehub_api_token=token
-            )
-            hf_model = HuggingFaceEndpoint(
-                repo_id=model_id or "meta-llama/Llama-3.1-8B-Instruct",
-                task="text-generation",
-                huggingfacehub_api_token=token
-            )
-            llm     = ChatHuggingFace(llm=hf_model)
-            context = get_top_chunks(query, chunks, embedding)
-
-        # ── Prompt & inference ────────────────────────────────────────────────
+            model_id      = body.model or "meta-llama/Llama-3.1-8B-Instruct"
+            llm, embedding = get_hf_clients(token, model_id)
+            context       = await run_in_threadpool(get_top_chunks, query, chunks, embedding)
 
         prompt = (
             "Answer the question using ONLY the context below. "
@@ -102,23 +145,32 @@ def chat():
             f"Question:\n{query}"
         )
 
-        response = llm.invoke(prompt)
-        return jsonify({"answer": extract_text(response)})
+        response = await asyncio.wait_for(
+            run_in_threadpool(llm.invoke, prompt),
+            timeout=LLM_TIMEOUT,
+        )
+        return {"answer": extract_text(response)}
+
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"LLM did not respond within {LLM_TIMEOUT}s. Try again.")
 
     except ImportError as e:
         pkg = str(e).split("'")[1] if "'" in str(e) else str(e)
-        return jsonify({
-            "error": f"Provider package not installed on server: {pkg}. "
-                     "Run: pip install langchain-openai langchain-google-genai langchain-anthropic"
-        }), 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"Provider package not installed: {pkg}. "
+                   "Run: pip install langchain-openai langchain-google-genai langchain-anthropic",
+        )
 
     except Exception as e:
-        # Surface the real error message to the popup
         msg = str(e)
-        if "api key" in msg.lower() or "apikey" in msg.lower() or "authentication" in msg.lower() or "unauthorized" in msg.lower() or "invalid" in msg.lower():
-            return jsonify({"error": f"Invalid API key for {provider}. Check your key in Settings."}), 401
-        return jsonify({"error": f"Server error ({provider}): {msg}"}), 500
+        if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+            raise HTTPException(status_code=401, detail=f"Invalid API key for {provider}. Check your key in Settings.")
+        raise HTTPException(status_code=500, detail=f"Server error ({provider}): {msg}")
 
+
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=5000, workers=4)
