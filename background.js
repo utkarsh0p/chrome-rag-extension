@@ -4,18 +4,26 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ASK_BACKEND") {
+    const provider = message.payload.provider || 'huggingface';
 
-    chrome.storage.local.get(['apiProvider', 'apiKey', 'hfToken'], (res) => {
-      // Support legacy hfToken storage
-      const provider = res.apiProvider || 'huggingface';
-      const key      = res.apiKey || res.hfToken;
+    chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey', 'hfToken'], (res) => {
+      const apiKeys = res.apiKeys || {};
+      let key = apiKeys[provider];
+
+      // Legacy fallback: old single-key storage
+      if (!key && res.apiProvider === provider) {
+        key = res.apiKey || res.hfToken;
+      }
+      if (!key && provider === 'huggingface' && res.hfToken) {
+        key = res.hfToken;
+      }
 
       if (!key) {
-        sendResponse({ error: "No API key found. Please open extension options and add your key." });
+        sendResponse({ error: `No API key for ${provider}. Open Settings (⚙) to add one.` });
         return;
       }
 
-      fetch("http://3.80.154.24:5000/chat", {
+      fetch("https://chrome-rag-extension.onrender.com/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

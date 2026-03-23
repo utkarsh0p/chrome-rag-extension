@@ -105,7 +105,7 @@ Top-3 chunks selected by cosine similarity (scikit-learn). Claude uses TF-IDF fa
 { chunks: string[] }
 
 // popup.js → background.js
-{ type: "ASK_BACKEND", payload: { query, chunks, model } }
+{ type: "ASK_BACKEND", payload: { query, chunks, model, provider } }
 // background.js response
 { answer: string } | { error: string }
 ```
@@ -114,9 +114,12 @@ Top-3 chunks selected by cosine similarity (scikit-learn). Claude uses TF-IDF fa
 
 | Key | Set by | Read by | Value |
 |---|---|---|---|
-| `apiProvider` | options/option.js | background.js, popup.js | `"openai"` \| `"gemini"` \| `"claude"` \| `"huggingface"` |
-| `apiKey` | options/option.js | background.js | API key string |
+| `apiKeys` | options/option.js | background.js, popup.js | `{ claude?: string, gemini?: string, openai?: string, huggingface?: string }` |
+| `apiProvider` | legacy | background.js (fallback) | old single-provider selection — migrated automatically |
+| `apiKey` | legacy | background.js (fallback) | old single API key — migrated automatically |
 | `hfToken` | legacy | background.js (fallback) | old HuggingFace token — migrated automatically |
+
+**Multi-key schema**: Users can save keys for all 4 providers at once. `popup.js` reads `apiKeys` to know which providers are available and sends `provider` in the payload. `background.js` reads `apiKeys[payload.provider]`. Legacy keys are migrated on first load in both `option.js` and `popup.js`.
 
 ---
 
@@ -149,16 +152,16 @@ Top-3 chunks selected by cosine similarity (scikit-learn). Claude uses TF-IDF fa
 - **Extension name**: SiteWhisper
 - **Logo**: geometric X-chevron (left) + D-arc with radial spokes (right) + starburst at intersection. Source: `icons/logo.svg`. The inner "track" effect (double-stroke) is the defining visual.
 - **Popup style**: Perplexity-inspired — compact on open (header + input only, ~130px), chat body hidden via `display:none`, gains `.visible` class (→ `display:flex`) on first message sent.
-- **Options style**: Provider card grid (2×2), key input always starts empty (never pre-filled), auto-closes with `window.close()` 800ms after successful save.
+- **Options style**: 4 provider rows (vertical list), each always-visible key input, "Saved" green badge shown if key exists (but input is never pre-filled). Save button saves all non-empty inputs and merges into `apiKeys`. Auto-closes 800ms after save.
 
 ---
 
 ## Key Gotchas
 
 - **`type` not `action`** in message listeners — the codebase uses `message.type`, not `message.action`. Wrong key = silent failure.
-- **Backend IP is hardcoded** in `background.js` (`3.80.154.24:5000`). Update this when the EC2 instance changes; there is no env config.
+- **Backend URL is hardcoded** in `background.js` (`https://chrome-rag-extension.onrender.com`). Update this if the deployment changes; there is no env config.
 - **Never use ImageMagick `convert`** to rasterize `logo.svg` — it produces broken 16-bit grayscale output. Use the Python PIL script instead.
-- **`chrome.storage.local` only** — never `chrome.storage.sync`. Keys: `apiProvider`, `apiKey` (legacy: `hfToken`).
+- **`chrome.storage.local` only** — never `chrome.storage.sync`. Primary key: `apiKeys` object. Legacy keys `apiProvider`, `apiKey`, `hfToken` are auto-migrated into `apiKeys` on first load.
 - **Chunking has no overlap** — 500-char fixed windows in `content.js`. Context can split across boundaries; this is a known limitation.
 - **Claude provider uses TF-IDF** not vector embeddings for retrieval, because Anthropic has no public embeddings API.
 - **`docker-compose up -d --build`** is required after any change to `server.py` or `requirements.txt` on the EC2 server — the volume mount is for dev only.

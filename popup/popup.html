@@ -54,18 +54,32 @@
         ></textarea>
 
         <div class="input-footer">
-          <!-- Model selector -->
-          <div class="model-selector" id="modelSelector">
-            <button class="model-btn" id="modelBtn" type="button">
-              <span class="model-btn-inner" id="modelBtnInner">
-                <span class="model-icon" id="modelIcon"></span>
-                <span class="model-label" id="modelLabel">Loading…</span>
-                <svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </span>
-            </button>
-            <div class="model-dropdown" id="modelDropdown"></div>
+          <!-- Provider + Model selectors -->
+          <div class="selectors-row">
+
+            <div class="sel-wrap" id="providerSelector">
+              <button class="sel-btn" id="providerBtn" type="button">
+                <span class="sel-inner" id="providerBtnInner">
+                  <span class="sel-icon" id="providerIcon"></span>
+                  <span class="sel-label" id="providerLabel">Provider</span>
+                  <svg class="sel-chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                </span>
+              </button>
+              <div class="sel-dropdown" id="providerDropdown"></div>
+            </div>
+
+            <span class="sel-sep">/</span>
+
+            <div class="sel-wrap" id="modelSelector">
+              <button class="sel-btn" id="modelBtn" type="button">
+                <span class="sel-inner" id="modelBtnInner">
+                  <span class="sel-label" id="modelLabel">Model</span>
+                  <svg class="sel-chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                </span>
+              </button>
+              <div class="sel-dropdown" id="modelDropdown"></div>
+            </div>
+
           </div>
 
           <!-- Send button -->

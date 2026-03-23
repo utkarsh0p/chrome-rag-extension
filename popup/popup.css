@@ -109,13 +109,26 @@ body {
   padding: 2px 10px 10px;
 }
 
-/* Model selector */
-.model-selector { position: relative; }
-
-.model-btn {
+.selectors-row {
   display: flex;
   align-items: center;
-  padding: 5px 8px;
+  gap: 0;
+}
+
+.sel-sep {
+  font-size: 12px;
+  color: #d8d8d0;
+  padding: 0 2px;
+  user-select: none;
+}
+
+/* Selector wrap + button */
+.sel-wrap { position: relative; }
+
+.sel-btn {
+  display: flex;
+  align-items: center;
+  padding: 5px 7px;
   border: none;
   background: transparent;
   border-radius: 8px;
@@ -123,63 +136,67 @@ body {
   transition: background 0.15s;
 }
 
-.model-btn:hover { background: rgba(0, 0, 0, 0.05); }
+.sel-btn:hover { background: rgba(0, 0, 0, 0.05); }
 
-.model-btn-inner {
+.sel-inner {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   font-family: 'Inter', sans-serif;
   color: #666660;
 }
 
-.model-icon { display: flex; align-items: center; line-height: 1; }
-.model-icon svg { width: 13px; height: 13px; }
+.sel-icon { display: flex; align-items: center; line-height: 1; }
+.sel-icon svg { width: 13px; height: 13px; }
 
-.model-label {
-  max-width: 140px;
+.sel-label {
+  max-width: 130px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.chevron {
+.sel-chevron {
   opacity: 0.4;
   flex-shrink: 0;
   transition: transform 0.15s;
 }
 
-.model-selector.open .chevron { transform: rotate(180deg); }
+.sel-wrap.open .sel-chevron { transform: rotate(180deg); }
 
-/* Dropdown */
-.model-dropdown {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  min-width: 192px;
+/* Dropdown — fixed position (set by JS), floats above button without expanding popup */
+.sel-dropdown {
+  position: fixed;
+  min-width: 190px;
+  max-height: 260px;
+  overflow-y: auto;
   background: #ffffff;
   border: 1px solid #e8e8e4;
   border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateY(4px);
   pointer-events: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 100;
+  z-index: 9999;
 }
 
-.model-dropdown.open { opacity: 1; transform: translateY(0); pointer-events: all; }
+.sel-dropdown::-webkit-scrollbar { width: 3px; }
+.sel-dropdown::-webkit-scrollbar-track { background: transparent; }
+.sel-dropdown::-webkit-scrollbar-thumb { background: #d4d4cc; border-radius: 4px; }
 
-.model-option {
+.sel-dropdown.open { opacity: 1; transform: translateY(0); pointer-events: all; }
+
+/* Options */
+.sel-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 14px;
-  font-size: 13.5px;
+  padding: 9px 14px;
+  font-size: 13px;
   font-family: 'Inter', sans-serif;
   font-weight: 450;
   cursor: pointer;
@@ -191,26 +208,40 @@ body {
   transition: background 0.1s;
 }
 
-.model-option:hover { background: #f5f5f0; }
-.model-option.selected { background: #f0f0eb; }
+.sel-option:hover  { background: #f5f5f0; }
+.sel-option.active { background: #f0f0eb; }
+.sel-option.dimmed { opacity: 0.45; cursor: default; }
+.sel-option.dimmed:hover { background: none; }
 
-.opt-left { display: flex; align-items: center; gap: 8px; }
+.opt-left { display: flex; align-items: center; gap: 8px; flex: 1; }
+.opt-icon  { display: flex; align-items: center; line-height: 1; flex-shrink: 0; }
+
+.opt-meta  { display: flex; flex-direction: column; gap: 1px; }
+.opt-name  { font-size: 13px; font-weight: 500; line-height: 1.2; }
+.opt-sub   { font-size: 11px; color: #aaaaaa; }
+
+.opt-nokey {
+  font-size: 10.5px;
+  color: #bbbbbb;
+  background: #f5f5f0;
+  border-radius: 4px;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
 
 .opt-check {
-  width: 13px; height: 13px;
+  width: 12px; height: 12px;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.1s;
 }
+.sel-option.active .opt-check { opacity: 1; }
 
-.model-option.selected .opt-check { opacity: 1; }
-
-@keyframes modelIn {
-  from { opacity: 0; transform: translateY(-3px); }
+@keyframes selIn {
+  from { opacity: 0; transform: translateY(-2px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-.model-btn-inner.switching { animation: modelIn 0.15s ease; }
+.sel-inner.switching { animation: selIn 0.15s ease; }
 
 /* Send button */
 .send-btn {
