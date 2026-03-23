@@ -38,7 +38,6 @@ const MODELS = {
 document.addEventListener("DOMContentLoaded", () => {
   const askBtn        = document.getElementById("ask");
   const input         = document.getElementById("query");
-  const chatBody      = document.getElementById("chatBody");
   const modelBtn      = document.getElementById("modelBtn");
   const modelBtnInner = document.getElementById("modelBtnInner");
   const modelIcon     = document.getElementById("modelIcon");
@@ -46,11 +45,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelDropdown = document.getElementById("modelDropdown");
   const modelSelector = document.getElementById("modelSelector");
   const settingsBtn   = document.getElementById("settingsBtn");
+  const responseArea  = document.getElementById("responseArea");
+  const thinkingRow   = document.getElementById("thinkingRow");
+  const answerSection = document.getElementById("answerSection");
+  const answerBody    = document.getElementById("answerBody");
 
   let selectedModel = null;
   let currentModels = [];
 
-  // ── Load provider → set model list ──
+  // ── Load provider ──
   chrome.storage.local.get(["apiProvider"], (res) => {
     const provider = res.apiProvider || "huggingface";
     currentModels  = MODELS[provider] || MODELS.huggingface;
@@ -59,10 +62,33 @@ document.addEventListener("DOMContentLoaded", () => {
     renderDropdown();
   });
 
-  // ── Settings button ──
   settingsBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
-  // ── Model rendering ──
+  // ── State helpers ──────────────────────────────────────────────────────────
+
+  function showThinking() {
+    responseArea.classList.add("visible");
+    thinkingRow.classList.add("visible");
+    answerSection.classList.remove("visible");
+    answerBody.className = "answer-body";
+  }
+
+  function showAnswer(text) {
+    thinkingRow.classList.remove("visible");
+    answerSection.classList.add("visible");
+    answerBody.className = "answer-body";
+    answerBody.innerText = text;
+  }
+
+  function showError(text) {
+    thinkingRow.classList.remove("visible");
+    answerSection.classList.add("visible");
+    answerBody.className = "answer-body error";
+    answerBody.innerText = text;
+  }
+
+  // ── Model rendering ───────────────────────────────────────────────────────
+
   function renderModelBtn() {
     modelIcon.innerHTML    = selectedModel.icon;
     modelLabel.textContent = selectedModel.label;
@@ -95,7 +121,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ── Dropdown toggle ──
+  // ── Dropdown ──────────────────────────────────────────────────────────────
+
   function openDropdown()  { modelSelector.classList.add("open");    modelDropdown.classList.add("open"); }
   function closeDropdown() { modelSelector.classList.remove("open"); modelDropdown.classList.remove("open"); }
 
@@ -106,7 +133,8 @@ document.addEventListener("DOMContentLoaded", () => {
   modelDropdown.addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeDropdown);
 
-  // ── Auto-resize textarea ──
+  // ── Textarea ──────────────────────────────────────────────────────────────
+
   input.addEventListener("input", () => {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 130) + "px";
@@ -120,31 +148,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ── Send ─────────────────────────────────────────────────────────────────────
+  // ── Send ──────────────────────────────────────────────────────────────────
+
   askBtn.addEventListener("click", async () => {
     const query = input.value.trim();
     if (!query) return;
 
-    // Reveal chat body on first message
-    chatBody.classList.add("visible");
-
-    appendMessage(query, "user-message");
     input.value = "";
     input.style.height = "auto";
     askBtn.disabled = true;
 
-    const thinkingMsg = appendMessage("Thinking…", "bot-message");
+    showThinking();
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
       chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_DATA" }, (response) => {
         if (chrome.runtime.lastError) {
-          thinkingMsg.innerText = "Content script not loaded on this page.";
+          showError("Content script not loaded on this page.");
           return;
         }
         if (!response?.chunks) {
-          thinkingMsg.innerText = "Could not read page content.";
+          showError("Could not read page content.");
           return;
         }
 
@@ -152,25 +177,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         chrome.runtime.sendMessage({ type: "ASK_BACKEND", payload }, (res) => {
           if (chrome.runtime.lastError) {
-            thinkingMsg.innerText = "Backend not reachable.";
+            showError("Backend not reachable.");
             return;
           }
-          thinkingMsg.innerText = res?.error
-            ? res.error + "\n\nOpen Settings (⚙) to set your API key."
-            : res.answer;
+          if (res?.error) {
+            showError(res.error + "\n\nOpen Settings (⚙) to set your API key.");
+          } else {
+            showAnswer(res.answer);
+          }
         });
       });
     } catch (err) {
-      thinkingMsg.innerText = "Unexpected error: " + err.message;
+      showError("Unexpected error: " + err.message);
     }
   });
-
-  function appendMessage(text, cls) {
-    const div = document.createElement("div");
-    div.className  = "message " + cls;
-    div.innerText  = text;
-    chatBody.appendChild(div);
-    chatBody.scrollTop = chatBody.scrollHeight;
-    return div;
-  }
 });

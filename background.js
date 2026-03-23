@@ -25,8 +25,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         body: JSON.stringify(message.payload)
       })
         .then(res => res.json())
-        .then(data => sendResponse({ answer: data.answer }))
-        .catch(err => sendResponse({ error: err.message }));
+        .then(data => {
+          if (data.error) sendResponse({ error: data.error });
+          else            sendResponse({ answer: data.answer });
+        })
+        .catch(err => sendResponse({ error: "Could not reach backend: " + err.message }));
     });
 
     return true;

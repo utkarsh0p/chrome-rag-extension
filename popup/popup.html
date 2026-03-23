@@ -15,7 +15,6 @@
     <!-- ── Branding header ── -->
     <div class="popup-header">
       <div class="brand">
-        <!-- Logo SVG (inline recreation of the X+D+starburst mark) -->
         <svg class="brand-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M16 11 L57 50 L16 89" stroke="#1a1a1a" stroke-width="11" stroke-linejoin="miter" stroke-linecap="round"/>
           <path d="M16 11 L57 50 L16 89" stroke="#fafaf8" stroke-width="5"  stroke-linejoin="miter" stroke-linecap="round"/>
@@ -44,9 +43,6 @@
         </svg>
       </button>
     </div>
-
-    <!-- ── Chat messages (hidden until first message) ── -->
-    <div class="chat-body" id="chatBody"></div>
 
     <!-- ── Input card ── -->
     <div class="input-area">
@@ -80,6 +76,36 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- ── Response area (hidden until first query) ── -->
+    <div class="response-area" id="responseArea">
+
+      <!-- Thinking state -->
+      <div class="thinking-row" id="thinkingRow">
+        <span class="thinking-text">Whispering</span>
+        <!-- Bouncing dots (MessageLoading SVG) -->
+        <svg class="dots-anim" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="4" cy="12" r="2" fill="currentColor">
+            <animate id="spinner_qFRN" begin="0;spinner_OcgL.end+0.25s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
+          </circle>
+          <circle cx="12" cy="12" r="2" fill="currentColor">
+            <animate begin="spinner_qFRN.begin+0.1s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
+          </circle>
+          <circle cx="20" cy="12" r="2" fill="currentColor">
+            <animate id="spinner_OcgL" begin="spinner_qFRN.begin+0.2s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
+          </circle>
+        </svg>
+      </div>
+
+      <!-- Answer state -->
+      <div class="answer-section" id="answerSection">
+        <div class="answer-header">
+          <span>Answer</span>
+        </div>
+        <div class="answer-body" id="answerBody"></div>
+      </div>
+
     </div>
 
   </div>
