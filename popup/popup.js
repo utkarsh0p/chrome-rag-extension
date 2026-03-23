@@ -119,10 +119,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const thinkingRow     = document.getElementById('thinkingRow');
   const answerSection   = document.getElementById('answerSection');
   const answerBody      = document.getElementById('answerBody');
+  const answerHeaderLabel = document.getElementById('answerHeaderLabel');
   const chatHistory     = document.getElementById('chatHistory');
+  const langSelector    = document.getElementById('langSelector');
+  const codeInjectBtn   = document.getElementById('codeInjectBtn');
 
-  let chatMessages   = [];   // [{ role, content }] — in-memory only
+  let chatMessages    = [];   // [{ role, content }] — in-memory only
   let currentStreamEl = null;
+
+  const LANGUAGES = [
+    'Python3','Python','Java','C++','C','C#',
+    'JavaScript','TypeScript','Go','Kotlin','Swift',
+    'Rust','Ruby','PHP','Dart','Scala','Racket','Erlang','Elixir',
+  ];
+  let selectedLanguage = 'Python3';
 
   // Provider selector elements
   const providerSelector = document.getElementById('providerSelector');
@@ -183,14 +193,108 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePlaceholder();
   });
 
-  function updatePlaceholder() {
+  function updateModeUI() {
     const placeholders = {
       rag:  'Ask anything about this page…',
       chat: 'Ask anything…',
-      code: 'Describe what to solve, or just hit send…',
     };
     input.placeholder = placeholders[selectedMode] || placeholders.rag;
+
+    // Toggle code mode class on shell for CSS to hide/show textarea vs lang selector
+    const shell = document.querySelector('.popup-shell');
+    if (selectedMode === 'code') {
+      shell.classList.add('mode-code');
+      askBtn.disabled = false;
+      renderLangGrid();
+    } else {
+      shell.classList.remove('mode-code');
+      askBtn.disabled = !input.value.trim();
+    }
   }
+
+  function renderLangGrid() {
+    langSelector.innerHTML = `
+      <div class="lang-grid" id="langGrid"></div>
+      <div class="lang-hint">Press ↵ to solve · use a strong reasoning model for best results</div>
+      <div class="lang-limit">Currently works on LeetCode only</div>`;
+    const grid = langSelector.querySelector('#langGrid');
+    LANGUAGES.forEach(lang => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'lang-btn' + (lang === selectedLanguage ? ' active' : '');
+      btn.textContent = lang;
+      btn.addEventListener('click', () => {
+        selectedLanguage = lang;
+        grid.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  // ── Inject button (persistent handler for code mode) ──────────────────────
+
+  codeInjectBtn.addEventListener('click', async () => {
+    const code = codeInjectBtn.dataset.finalCode;
+    if (!code) return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: (c) => {
+        try {
+          if (window.monaco && window.monaco.editor) {
+            const models = window.monaco.editor.getModels();
+            if (models.length > 0) { models[0].setValue(c); return { ok: true }; }
+          }
+        } catch (_) {}
+        try {
+          const ta = document.querySelector('.monaco-editor textarea');
+          if (ta) {
+            ta.focus();
+            document.execCommand('selectAll');
+            if (document.execCommand('insertText', false, c)) return { ok: true };
+          }
+        } catch (_) {}
+        try {
+          const el = document.querySelector('.monaco-editor');
+          if (el) {
+            const k = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
+            if (k) {
+              let f = el[k], d = 0;
+              while (f && d < 200) {
+                if (f.stateNode?.editor?.setValue) { f.stateNode.editor.setValue(c); return { ok: true }; }
+                f = f.return; d++;
+              }
+            }
+          }
+        } catch (_) {}
+        return { ok: false, error: 'Could not find Monaco editor.' };
+      },
+      args: [code],
+    }, (results) => {
+      const res = results?.[0]?.result;
+      if (chrome.runtime.lastError || !res?.ok) {
+        codeInjectBtn.textContent = '✗ Inject failed — ' + (res?.error || chrome.runtime.lastError?.message || 'unknown');
+        codeInjectBtn.classList.add('inject-fail');
+      } else {
+        codeInjectBtn.textContent = '✓ Injected!';
+        codeInjectBtn.classList.add('inject-done');
+        codeInjectBtn.disabled = true;
+      }
+    });
+  });
+
+  // Allow Enter key in code mode (textarea is hidden)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && selectedMode === 'code' && !askBtn.disabled) {
+      e.preventDefault();
+      askBtn.click();
+    }
+  });
+
+  // Alias for callers that used the old name
+  function updatePlaceholder() { updateModeUI(); }
 
   settingsBtn.addEventListener('click', () => showOverlay('menu'));
 
@@ -199,8 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function showThinking() {
     responseArea.classList.add('visible');
     thinkingRow.classList.remove('visible');
+    codeInjectBtn.style.display = 'none';
 
-    if (selectedMode === 'chat' || selectedMode === 'code') {
+    if (selectedMode === 'chat') {
       chatHistory.classList.add('visible');
       answerSection.classList.remove('visible');
       // Typing bubble inside chat
@@ -211,9 +316,10 @@ document.addEventListener('DOMContentLoaded', () => {
       chatHistory.appendChild(wrap);
       chatHistory.scrollTop = chatHistory.scrollHeight;
     } else {
-      // RAG: show whispering inside answerBody
+      // RAG and Code: whispering inside answerSection
       chatHistory.classList.remove('visible');
       answerSection.classList.add('visible');
+      answerHeaderLabel.textContent = selectedMode === 'code' ? 'Solution' : 'Answer';
       answerBody.className = 'answer-body whispering-rag';
       answerBody.innerHTML = `<span class="whispering-label">Whispering</span>${TYPING_SVG}`;
     }
@@ -231,6 +337,10 @@ document.addEventListener('DOMContentLoaded', () => {
       chatHistory.appendChild(wrap);
       chatHistory.scrollTop = chatHistory.scrollHeight;
       currentStreamEl = bubble;
+    } else if (selectedMode === 'code') {
+      answerBody.className = 'answer-body code-answer';
+      answerBody.innerHTML = '';
+      currentStreamEl = answerBody;
     } else {
       // RAG — answerSection already visible, just clear and stream
       answerBody.className = 'answer-body';
@@ -385,7 +495,15 @@ document.addEventListener('DOMContentLoaded', () => {
           chrome.storage.local.set({ selectedMode });
           renderModeBtn();
           updatePlaceholder();
-          if (m.key !== 'chat') { chatMessages = []; chatHistory.innerHTML = ''; chatHistory.classList.remove('visible'); }
+          // Clear all output on mode change
+          responseArea.classList.remove('visible');
+          chatHistory.innerHTML = '';
+          chatHistory.classList.remove('visible');
+          answerSection.classList.remove('visible');
+          answerBody.className = 'answer-body';
+          answerBody.innerHTML = '';
+          codeInjectBtn.style.display = 'none';
+          chatMessages = [];
           hideOverlay();
         });
         overlayList.appendChild(btn);
@@ -489,8 +607,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Send ──────────────────────────────────────────────────────────────────
 
   askBtn.addEventListener('click', async () => {
-    const query = input.value.trim();
-    if (!query) return;
+    const query = selectedMode === 'code' ? '' : input.value.trim();
+    if (!query && selectedMode !== 'code') return;
 
     if (!selectedProvider) {
       showError('No provider set. Open Settings (⚙) to add an API key.');
@@ -499,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     input.value        = '';
     input.style.height = 'auto';
-    askBtn.disabled    = true;
+    if (selectedMode !== 'code') askBtn.disabled = true;
     hideOverlay();
 
     if (selectedMode === 'chat') {
@@ -526,7 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
 
         const isChat = selectedMode === 'chat';
-        const url    = isChat ? 'http://localhost:5000/chat' : 'http://localhost:5000/rag';
+        const url    = isChat ? 'https://chrome-rag-extension.onrender.com/chat' : 'https://chrome-rag-extension.onrender.com/rag';
         const body   = isChat
           ? { query, model: selectedModel?.id, provider: selectedProvider, history: chatMessages.slice(0, -1) }
           : { query, chunks, model: selectedModel?.id, provider: selectedProvider };
@@ -614,6 +732,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       async function solveCode(tab, instruction) {
+        // Must be on a LeetCode problem page
+        if (!tab.url || !tab.url.match(/^https?:\/\/(www\.)?leetcode\.com\/problems\//)) {
+          showError('Open a LeetCode problem page first, then use WhisperCode.');
+          return;
+        }
+
         // Inject content script if needed, then scrape LeetCode data
         function getLCData(cb) {
           chrome.tabs.sendMessage(tab.id, { type: 'GET_LEETCODE_DATA' }, (res) => {
@@ -629,34 +753,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         getLCData(async (lcData) => {
-          if (!lcData || !lcData.title) {
-            showError('Could not read problem from this page. Make sure you are on a LeetCode problem page.');
+          if (!lcData || !lcData.description) {
+            showError('Could not read the problem. Make sure the page is fully loaded.');
             return;
           }
 
           const key = savedApiKeys[selectedProvider];
           if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
 
-          // User bubble first, then whispering indicator
-          responseArea.classList.add('visible');
-          chatHistory.classList.add('visible');
-          answerSection.classList.remove('visible');
-          const userWrap = document.createElement('div');
-          userWrap.className = 'chat-msg user';
-          userWrap.innerHTML = `<div class="chat-bubble user-bubble">${escHtml(instruction || 'Solve this problem')}</div><div class="chat-avatar user-av">${USER_AVATAR_SVG}</div>`;
-          chatHistory.appendChild(userWrap);
-          chatHistory.scrollTop = chatHistory.scrollHeight;
           showThinking();
 
           let response;
           try {
-            response = await fetch('http://localhost:5000/code', {
+            response = await fetch('https://chrome-rag-extension.onrender.com/code', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
               body: JSON.stringify({
                 title:        lcData.title,
                 description:  lcData.description,
-                language:     lcData.language,
+                language:     selectedLanguage,
                 current_code: lcData.currentCode,
                 instruction:  instruction || null,
                 model:        selectedModel?.id,
@@ -674,29 +789,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
 
-          // Prepare code bubble elements (not appended yet — wait for first token)
-          const codeWrap = document.createElement('div');
-          codeWrap.className = 'chat-msg ai';
-          const codeBubble = document.createElement('div');
-          codeBubble.className = 'chat-bubble code-bubble';
-          const codePre = document.createElement('pre');
-          const codeEl  = document.createElement('code');
-          codePre.appendChild(codeEl);
-          codeBubble.appendChild(codePre);
-
-          const injectBtn = document.createElement('button');
-          injectBtn.className = 'inject-btn';
-          injectBtn.textContent = 'Inject into editor →';
-          injectBtn.disabled = true;
-          codeBubble.appendChild(injectBtn);
-
-          codeWrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div>`;
-          codeWrap.appendChild(codeBubble);
-
           const reader  = response.body.getReader();
           const decoder = new TextDecoder();
-          let fullCode = '';
-          let buffer   = '';
+          let fullCode    = '';
+          let buffer      = '';
           let codeStarted = false;
 
           try {
@@ -716,15 +812,11 @@ document.addEventListener('DOMContentLoaded', () => {
                   if (parsed.text) {
                     if (!codeStarted) {
                       codeStarted = true;
-                      // First token: dismiss whispering bubble, show code bubble
-                      document.getElementById('chatTyping')?.remove();
-                      chatHistory.appendChild(codeWrap);
+                      startAnswer(); // clears whispering, sets up dark code answerBody
                     }
                     fullCode += parsed.text;
-                    // Strip markdown fences if LLM adds them despite instructions
-                    const cleanCode = fullCode.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'');
-                    codeEl.textContent = cleanCode;
-                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    currentStreamEl.textContent = fullCode.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'');
+                    answerBody.scrollTop = answerBody.scrollHeight;
                   }
                 } catch { /* skip */ }
               }
@@ -733,74 +825,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!fullCode) { showError('Stream error: ' + err.message); return; }
           }
 
-          // Enable inject button once code is fully received
+          // Show inject button
           const finalCode = fullCode.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'');
-          injectBtn.disabled = false;
-          injectBtn.addEventListener('click', () => {
-            // Run in MAIN world so window.monaco is accessible
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              world: 'MAIN',
-              func: (code) => {
-                // Strategy 1: Monaco global API
-                try {
-                  if (window.monaco && window.monaco.editor) {
-                    const models = window.monaco.editor.getModels();
-                    if (models.length > 0) {
-                      models[0].setValue(code);
-                      return { ok: true };
-                    }
-                  }
-                } catch (_) {}
-
-                // Strategy 2: execCommand via Monaco's hidden textarea
-                try {
-                  const textarea = document.querySelector('.monaco-editor textarea');
-                  if (textarea) {
-                    textarea.focus();
-                    document.execCommand('selectAll');
-                    if (document.execCommand('insertText', false, code)) return { ok: true };
-                  }
-                } catch (_) {}
-
-                // Strategy 3: React fiber walk
-                try {
-                  const editorEl = document.querySelector('.monaco-editor');
-                  if (editorEl) {
-                    const fiberKey = Object.keys(editorEl).find(k =>
-                      k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance')
-                    );
-                    if (fiberKey) {
-                      let fiber = editorEl[fiberKey];
-                      let depth = 0;
-                      while (fiber && depth < 200) {
-                        const si = fiber.stateNode;
-                        if (si && si.editor && typeof si.editor.setValue === 'function') {
-                          si.editor.setValue(code);
-                          return { ok: true };
-                        }
-                        fiber = fiber.return;
-                        depth++;
-                      }
-                    }
-                  }
-                } catch (_) {}
-
-                return { ok: false, error: 'Could not find Monaco editor on this page.' };
-              },
-              args: [finalCode],
-            }, (results) => {
-              const res = results?.[0]?.result;
-              if (chrome.runtime.lastError || !res?.ok) {
-                injectBtn.textContent = '✗ Inject failed — ' + (res?.error || chrome.runtime.lastError?.message || 'unknown error');
-                injectBtn.classList.add('inject-fail');
-              } else {
-                injectBtn.textContent = '✓ Injected!';
-                injectBtn.classList.add('inject-done');
-                injectBtn.disabled = true;
-              }
-            });
-          });
+          codeInjectBtn.dataset.finalCode = finalCode;
+          codeInjectBtn.textContent = 'Inject into editor →';
+          codeInjectBtn.className = 'inject-btn-header';
+          codeInjectBtn.disabled = false;
+          codeInjectBtn.style.display = 'block';
         });
       }
 

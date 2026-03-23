@@ -55,6 +55,9 @@
           rows="1"
         ></textarea>
 
+        <!-- Code mode: language picker (shown instead of textarea) -->
+        <div class="lang-selector" id="langSelector"></div>
+
         <div class="input-footer">
           <!-- Provider + Model selectors -->
           <div class="selectors-row">
@@ -119,8 +122,9 @@
 
       <!-- Answer state -->
       <div class="answer-section" id="answerSection">
-        <div class="answer-header">
-          <span>Answer</span>
+        <div class="answer-header" id="answerHeader">
+          <span id="answerHeaderLabel">Answer</span>
+          <button class="inject-btn-header" id="codeInjectBtn" disabled>Inject into editor →</button>
         </div>
         <div class="answer-body" id="answerBody"></div>
       </div>
