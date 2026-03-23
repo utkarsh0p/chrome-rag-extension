@@ -332,4 +332,5 @@ async def chat(
 
 if __name__ == "__main__":
     import os, uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), workers=4)
+    workers = 1 if os.environ.get("RENDER") else 4
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), workers=workers)
