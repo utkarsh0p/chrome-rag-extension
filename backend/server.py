@@ -51,14 +51,14 @@ def chat():
 
         if provider == "openai":
             from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-            embedding = OpenAIEmbeddings(openai_api_key=token)
+            embedding = OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=token)
             llm       = ChatOpenAI(model=model_id or "gpt-4o-mini", openai_api_key=token)
             context   = get_top_chunks(query, chunks, embedding)
 
         elif provider == "gemini":
             from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
             embedding = GoogleGenerativeAIEmbeddings(
-                model="models/text-embedding-004",
+                model="gemini-embedding-001",
                 google_api_key=token
             )
             llm     = ChatGoogleGenerativeAI(
@@ -70,7 +70,7 @@ def chat():
         elif provider == "claude":
             from langchain_anthropic import ChatAnthropic
             llm     = ChatAnthropic(
-                model=model_id or "claude-3-5-haiku-20241022",
+                model=model_id or "claude-haiku-4-5-20251001",
                 anthropic_api_key=token
             )
             context = get_top_chunks(query, chunks)  # TF-IDF — Anthropic has no embeddings API

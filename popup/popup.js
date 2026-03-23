@@ -33,9 +33,9 @@ const MODELS = {
     { id: 'gemini-1.5-pro',                 label: 'Gemini 1.5 Pro'   },
   ],
   claude: [
-    { id: 'claude-3-5-haiku-20241022',  label: 'Claude 3.5 Haiku'  },
-    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { id: 'claude-opus-4-5',            label: 'Claude Opus 4.5'   },
+    { id: 'claude-haiku-4-5-20251001',  label: 'Claude Haiku 4.5'  },
+    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+    { id: 'claude-opus-4-5-20251101',   label: 'Claude Opus 4.5'   },
   ],
   huggingface: [
     { id: 'meta-llama/Llama-3.1-8B-Instruct',   label: 'Llama 3.1 8B'  },
