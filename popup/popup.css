@@ -106,6 +106,50 @@ body {
   color: #b0b0a8;
 }
 
+/* ── YouTube mode ────────────────────────────────────────────────────────────── */
+
+.yt-selector { display: none; padding: 14px 16px 8px; }
+
+.popup-shell.mode-youtube .input-card textarea { display: none; }
+.popup-shell.mode-youtube .yt-selector         { display: block; }
+.popup-shell.mode-youtube .send-btn            { display: none; }
+
+.yt-actions { display: flex; flex-direction: column; gap: 7px; }
+
+.yt-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1.5px solid #e8e8e4;
+  background: #fafaf8;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1a1a1a;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.yt-btn:hover { background: #f0f0ec; border-color: #d0d0c8; }
+
+.yt-btn svg { flex-shrink: 0; color: #888; }
+
+.yt-btn .yt-btn-label { font-weight: 500; }
+
+.yt-btn .yt-btn-sub { font-size: 11px; color: #a8a8a0; margin-top: 1px; }
+
+.yt-btn-text { display: flex; flex-direction: column; }
+
+.yt-hint {
+  font-size: 11px;
+  color: #a8a8a0;
+  text-align: center;
+  padding: 7px 0 2px;
+}
+
 /* ── Code mode: language selector (replaces textarea) ───────────────────────── */
 
 .lang-selector {

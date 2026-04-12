@@ -105,5 +105,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse(injectIntoMonaco(message.code));
   }
 
+  if (message.type === 'GET_YOUTUBE_DATA') {
+    const video       = document.querySelector('video');
+    const currentTime = video ? Math.floor(video.currentTime) : 0;
+    const videoId     = new URLSearchParams(window.location.search).get('v') || '';
+    const titleEl     = document.querySelector(
+      'h1.ytd-video-primary-info-renderer yt-formatted-string, #title h1 yt-formatted-string, #above-the-fold h1 yt-formatted-string'
+    );
+    const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '').trim();
+    sendResponse({ videoId, currentTime, title });
+  }
+
   return true;
 });

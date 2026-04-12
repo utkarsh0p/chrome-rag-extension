@@ -328,6 +328,97 @@ async def chat(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# ── /ytexplain endpoint (YouTube transcript summariser / timestamp explainer) ──
+
+class YTRequest(BaseModel):
+    video_id: str
+    mode: str = "full"          # "full" | "timestamp"
+    timestamp: Optional[int] = None   # seconds into video
+    model: Optional[str] = None
+    provider: Optional[str] = None
+
+
+@app.post("/ytexplain")
+async def ytexplain(
+    body: YTRequest,
+    token: str    = Header(..., alias="Token"),
+    provider: str = Header("openai", alias="Provider"),
+):
+    token    = token.strip()
+    provider = (body.provider or provider).lower()
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No API key provided.")
+
+    # Load transcript
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+        transcript = await run_in_threadpool(
+            lambda: YouTubeTranscriptApi.get_transcript(
+                body.video_id, languages=["en", "en-US", "en-GB", "a.en"]
+            )
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not load transcript: {e}. Video may have no captions.")
+
+    if body.mode == "timestamp" and body.timestamp is not None:
+        ts     = body.timestamp
+        window = 180  # ±3 minutes
+        nearby = [s for s in transcript if abs(s["start"] - ts) <= window]
+        if not nearby:
+            nearby = transcript[:40]
+        context  = " ".join(s["text"] for s in nearby)
+        mins, secs = divmod(ts, 60)
+        prompt = (
+            f"The user is watching a YouTube video and is at {mins}:{secs:02d}.\n"
+            f"Here is the transcript around that moment:\n\n{context}\n\n"
+            f"Explain clearly and concisely what is being discussed at this point."
+        )
+    else:
+        full_text = " ".join(s["text"] for s in transcript)
+        if len(full_text) > 12000:
+            full_text = full_text[:12000] + " … [transcript truncated]"
+        prompt = (
+            f"Summarize this YouTube video transcript in a clear, structured way. "
+            f"Cover the main topics, key points, and conclusions:\n\n{full_text}"
+        )
+
+    try:
+        if provider == "openai":
+            model_id = body.model or "gpt-4.1-mini"
+            llm, _   = get_openai_clients(token, model_id)
+        elif provider == "gemini":
+            model_id = body.model or "gemini-2.5-flash"
+            llm, _   = get_gemini_clients(token, model_id)
+        elif provider == "claude":
+            model_id = body.model or "claude-haiku-4-5"
+            llm      = get_claude_client(token, model_id)
+        else:
+            model_id = body.model or "meta-llama/Llama-3.1-8B-Instruct"
+            llm, _   = get_hf_clients(token, model_id)
+    except Exception as e:
+        msg = str(e)
+        if any(k in msg.lower() for k in ("api key", "apikey", "authentication", "unauthorized", "invalid")):
+            raise HTTPException(status_code=401, detail=f"Invalid API key for {provider}.")
+        raise HTTPException(status_code=500, detail=f"Server error: {msg}")
+
+    async def generate():
+        try:
+            async with asyncio.timeout(LLM_TIMEOUT):
+                async for chunk in llm.astream(prompt):
+                    text = extract_chunk(chunk)
+                    if text:
+                        yield f"data: {json.dumps({'text': text})}\n\n"
+        except TimeoutError:
+            yield f"data: {json.dumps({'error': f'LLM timed out after {LLM_TIMEOUT}s.'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

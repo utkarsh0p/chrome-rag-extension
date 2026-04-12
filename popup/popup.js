@@ -122,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const answerHeaderLabel = document.getElementById('answerHeaderLabel');
   const chatHistory     = document.getElementById('chatHistory');
   const langSelector    = document.getElementById('langSelector');
+  const ytSelector      = document.getElementById('ytSelector');
   const codeInjectBtn   = document.getElementById('codeInjectBtn');
 
   let chatMessages    = [];   // [{ role, content }] — in-memory only
@@ -157,40 +158,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const modeBtn = document.getElementById('modeBtn');
 
   function renderModeBtn() {
-    const labels = { rag: 'RAG', chat: 'Chat', code: 'Code' };
+    const labels = { rag: 'RAG', chat: 'Chat', code: 'Code', youtube: 'YT' };
     modeBtn.textContent = labels[selectedMode] || 'RAG';
     modeBtn.className   = 'mode-badge' + (selectedMode !== 'rag' ? ' mode-chat' : '');
   }
 
   modeBtn.addEventListener('click', () => showOverlay('whisper-modes'));
 
-  chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey', 'hfToken', 'selectedProvider', 'selectedModelId', 'selectedMode'], (res) => {
-    savedApiKeys = res.apiKeys || {};
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    const tabUrl = tab?.url || '';
 
-    // Migrate legacy single-key storage
-    if (res.apiProvider && res.apiKey && !savedApiKeys[res.apiProvider]) {
-      savedApiKeys[res.apiProvider] = res.apiKey;
-    }
-    if (res.hfToken && !savedApiKeys.huggingface) {
-      savedApiKeys.huggingface = res.hfToken;
-    }
+    chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey', 'hfToken', 'selectedProvider', 'selectedModelId', 'selectedMode'], (res) => {
+      savedApiKeys = res.apiKeys || {};
 
-    // Restore last selection, fall back to first available provider with a key
-    const lastProvider = res.selectedProvider && savedApiKeys[res.selectedProvider] ? res.selectedProvider : null;
-    const firstAvailable = PROVIDER_ORDER.find(p => savedApiKeys[p]) || null;
-    selectedProvider = lastProvider || firstAvailable;
+      // Migrate legacy single-key storage
+      if (res.apiProvider && res.apiKey && !savedApiKeys[res.apiProvider]) {
+        savedApiKeys[res.apiProvider] = res.apiKey;
+      }
+      if (res.hfToken && !savedApiKeys.huggingface) {
+        savedApiKeys.huggingface = res.hfToken;
+      }
 
-    if (selectedProvider) {
-      const models = MODELS[selectedProvider];
-      selectedModel = models.find(m => m.id === res.selectedModelId) || models[0];
-    }
+      // Restore last selection, fall back to first available provider with a key
+      const lastProvider = res.selectedProvider && savedApiKeys[res.selectedProvider] ? res.selectedProvider : null;
+      const firstAvailable = PROVIDER_ORDER.find(p => savedApiKeys[p]) || null;
+      selectedProvider = lastProvider || firstAvailable;
 
-    if (res.selectedMode) selectedMode = res.selectedMode;
+      if (selectedProvider) {
+        const models = MODELS[selectedProvider];
+        selectedModel = models.find(m => m.id === res.selectedModelId) || models[0];
+      }
 
-    renderProviderBtn();
-    renderModelBtn();
-    renderModeBtn();
-    updatePlaceholder();
+      if (res.selectedMode) selectedMode = res.selectedMode;
+
+      // Auto-detect specialized pages (overrides stored mode for this session)
+      if (tabUrl.includes('youtube.com/watch')) {
+        selectedMode = 'youtube';
+      } else if (tabUrl.match(/leetcode\.com\/problems\//)) {
+        selectedMode = 'code';
+      }
+
+      renderProviderBtn();
+      renderModelBtn();
+      renderModeBtn();
+      updatePlaceholder();
+    });
   });
 
   function updateModeUI() {
@@ -200,14 +212,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     input.placeholder = placeholders[selectedMode] || placeholders.rag;
 
-    // Toggle code mode class on shell for CSS to hide/show textarea vs lang selector
     const shell = document.querySelector('.popup-shell');
+    shell.classList.remove('mode-code', 'mode-youtube');
+
     if (selectedMode === 'code') {
       shell.classList.add('mode-code');
       askBtn.disabled = false;
       renderLangGrid();
+    } else if (selectedMode === 'youtube') {
+      shell.classList.add('mode-youtube');
+      renderYTSelector();
     } else {
-      shell.classList.remove('mode-code');
       askBtn.disabled = !input.value.trim();
     }
   }
@@ -229,6 +244,114 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.classList.add('active');
       });
       grid.appendChild(btn);
+    });
+  }
+
+  function renderYTSelector() {
+    ytSelector.innerHTML = `
+      <div class="yt-actions">
+        <button class="yt-btn" id="ytFullBtn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg>
+          <span class="yt-btn-text">
+            <span class="yt-btn-label">Summarize full video</span>
+            <span class="yt-btn-sub">Get a structured overview of the entire video</span>
+          </span>
+        </button>
+        <button class="yt-btn" id="ytTimestampBtn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="yt-btn-text">
+            <span class="yt-btn-label">Explain this moment</span>
+            <span class="yt-btn-sub">Explain what's being discussed right now</span>
+          </span>
+        </button>
+      </div>
+      <div class="yt-hint">use a strong model for best results</div>`;
+
+    document.getElementById('ytFullBtn').addEventListener('click', () => triggerYT('full'));
+    document.getElementById('ytTimestampBtn').addEventListener('click', () => triggerYT('timestamp'));
+  }
+
+  async function triggerYT(ytMode) {
+    if (!selectedProvider) { showError('No provider set. Open Settings (⚙) to add an API key.'); return; }
+    const key = savedApiKeys[selectedProvider];
+    if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    function getYTData(cb) {
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (res) => {
+        if (chrome.runtime.lastError || !res) {
+          chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
+            if (chrome.runtime.lastError) { cb(null); return; }
+            chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (res2) => cb(res2));
+          });
+          return;
+        }
+        cb(res);
+      });
+    }
+
+    getYTData(async (ytData) => {
+      if (!ytData?.videoId) {
+        showError("Couldn't read this YouTube page. Make sure you're on a video page.");
+        return;
+      }
+
+      showThinking();
+
+      let response;
+      try {
+        response = await fetch('https://chrome-rag-extension.onrender.com/ytexplain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
+          body: JSON.stringify({
+            video_id: ytData.videoId,
+            mode: ytMode,
+            timestamp: ytMode === 'timestamp' ? ytData.currentTime : null,
+            model: selectedModel?.id,
+            provider: selectedProvider,
+          }),
+        });
+      } catch (err) {
+        showError('Could not reach backend: ' + err.message);
+        return;
+      }
+
+      if (!response.ok) {
+        try { const d = await response.json(); showError(d.detail || 'Backend error.'); }
+        catch { showError('Backend error ' + response.status); }
+        return;
+      }
+
+      const reader  = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '', started = false, md = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (raw === '[DONE]') break;
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.error) { showError(parsed.error); return; }
+              if (parsed.text) {
+                if (!started) { startAnswer(); started = true; }
+                md += parsed.text;
+                currentStreamEl.innerHTML = renderMarkdown(md);
+              }
+            } catch { /* skip */ }
+          }
+        }
+      } catch (err) {
+        if (!started) showError('Stream error: ' + err.message);
+      }
     });
   }
 
@@ -316,10 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
       chatHistory.appendChild(wrap);
       chatHistory.scrollTop = chatHistory.scrollHeight;
     } else {
-      // RAG and Code: whispering inside answerSection
+      // RAG, Code, YouTube: whispering inside answerSection
       chatHistory.classList.remove('visible');
       answerSection.classList.add('visible');
-      answerHeaderLabel.textContent = selectedMode === 'code' ? 'Solution' : 'Answer';
+      const headerLabels = { code: 'Solution', youtube: 'Summary' };
+      answerHeaderLabel.textContent = headerLabels[selectedMode] || 'Answer';
       answerBody.className = 'answer-body whispering-rag';
       answerBody.innerHTML = `<span class="whispering-label">Whispering</span>${TYPING_SVG}`;
     }
@@ -342,7 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
       answerBody.innerHTML = '';
       currentStreamEl = answerBody;
     } else {
-      // RAG — answerSection already visible, just clear and stream
+      // RAG and YouTube — clear and stream
       answerBody.className = 'answer-body';
       answerBody.innerHTML = '';
       currentStreamEl = answerBody;
@@ -351,13 +475,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showError(text) {
     document.getElementById('chatTyping')?.remove();
-    if (selectedMode === 'chat' || selectedMode === 'code') {
+    if (selectedMode === 'chat') {
       const wrap = document.createElement('div');
       wrap.className = 'chat-msg ai';
       wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div><div class="chat-bubble ai-bubble error">${escHtml(text)}</div>`;
       chatHistory.appendChild(wrap);
       chatHistory.scrollTop = chatHistory.scrollHeight;
     } else {
+      responseArea.classList.add('visible');
       answerSection.classList.add('visible');
       answerBody.className = 'answer-body error';
       answerBody.innerText = text;
@@ -419,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h2l3-8 4 16 3-10 2 4 2-2h4"/></svg>`,
           label: 'Whisper Modes',
-          sub: selectedMode === 'rag' ? 'WhisperRAG active' : 'WhisperChat active',
+          sub: { rag: 'WhisperRAG active', chat: 'WhisperChat active', code: 'WhisperCode active', youtube: 'WhisperYT active' }[selectedMode] || 'WhisperRAG active',
           action: () => showOverlay('whisper-modes', 'menu'),
           disabled: false,
         },
@@ -473,6 +598,12 @@ document.addEventListener('DOMContentLoaded', () => {
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
           label: 'WhisperCode',
           sub: 'Solve & inject code — LeetCode / coding sites',
+        },
+        {
+          key: 'youtube',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>`,
+          label: 'WhisperYT',
+          sub: 'Summarize & explain YouTube videos',
         },
       ];
 
