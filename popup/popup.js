@@ -1,3 +1,7 @@
+// ── Backend URL — toggle one line to switch between local and production ──────
+// const BACKEND = 'http://localhost:5000';        // ← local testing
+const BACKEND   = 'https://chrome-rag-extension.onrender.com'; // ← production
+
 // ── Avatars ───────────────────────────────────────────────────────────────────
 
 const AI_AVATAR_SVG = `<svg viewBox="0 0 100 100" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -305,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let response;
       try {
-        response = await fetch('https://chrome-rag-extension.onrender.com/ytexplain', {
+        response = await fetch(`${BACKEND}/ytexplain`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
           body: JSON.stringify({
@@ -779,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
 
         const isChat = selectedMode === 'chat';
-        const url    = isChat ? 'https://chrome-rag-extension.onrender.com/chat' : 'https://chrome-rag-extension.onrender.com/rag';
+        const url    = isChat ? `${BACKEND}/chat` : `${BACKEND}/rag`;
         const body   = isChat
           ? { query, model: selectedModel?.id, provider: selectedProvider, history: chatMessages.slice(0, -1) }
           : { query, chunks, model: selectedModel?.id, provider: selectedProvider };
@@ -900,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           let response;
           try {
-            response = await fetch('https://chrome-rag-extension.onrender.com/code', {
+            response = await fetch(`${BACKEND}/code`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
               body: JSON.stringify({
