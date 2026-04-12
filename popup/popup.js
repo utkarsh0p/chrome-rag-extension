@@ -296,6 +296,10 @@ document.addEventListener('DOMContentLoaded', () => {
         showError("Couldn't read this YouTube page. Make sure you're on a video page.");
         return;
       }
+      if (!ytData.transcript || ytData.transcript.length === 0) {
+        showError("No captions found for this video. Try a video with English captions enabled.");
+        return;
+      }
 
       showThinking();
 
@@ -305,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
           body: JSON.stringify({
-            video_id: ytData.videoId,
+            transcript: ytData.transcript || [],
             mode: ytMode,
             timestamp: ytMode === 'timestamp' ? ytData.currentTime : null,
             model: selectedModel?.id,

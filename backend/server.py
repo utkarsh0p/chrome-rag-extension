@@ -331,9 +331,9 @@ async def chat(
 # ── /ytexplain endpoint (YouTube transcript summariser / timestamp explainer) ──
 
 class YTRequest(BaseModel):
-    video_id: str
-    mode: str = "full"          # "full" | "timestamp"
-    timestamp: Optional[int] = None   # seconds into video
+    transcript: list[dict]          # [{"text": str, "start": float}] — fetched by extension
+    mode: str = "full"              # "full" | "timestamp"
+    timestamp: Optional[int] = None # seconds into video
     model: Optional[str] = None
     provider: Optional[str] = None
 
@@ -349,17 +349,10 @@ async def ytexplain(
 
     if not token:
         raise HTTPException(status_code=400, detail="No API key provided.")
+    if not body.transcript:
+        raise HTTPException(status_code=400, detail="No transcript received. The video may have captions disabled.")
 
-    # Load transcript
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-        transcript = await run_in_threadpool(
-            lambda: YouTubeTranscriptApi.get_transcript(
-                body.video_id, languages=["en", "en-US", "en-GB", "a.en"]
-            )
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not load transcript: {e}. Video may have no captions.")
+    transcript = body.transcript
 
     if body.mode == "timestamp" and body.timestamp is not None:
         ts     = body.timestamp

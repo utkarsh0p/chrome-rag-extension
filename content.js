@@ -113,7 +113,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       'h1.ytd-video-primary-info-renderer yt-formatted-string, #title h1 yt-formatted-string, #above-the-fold h1 yt-formatted-string'
     );
     const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '').trim();
-    sendResponse({ videoId, currentTime, title });
+
+    // Fetch transcript from user's browser using YouTube's embedded player data
+    (async () => {
+      let transcript = null;
+      try {
+        const playerData = window.ytInitialPlayerResponse;
+        const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (tracks && tracks.length > 0) {
+          const track = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
+          const resp = await fetch(track.baseUrl + '&fmt=json3');
+          const data = await resp.json();
+          transcript = (data.events || [])
+            .filter(e => e.segs)
+            .map(e => ({
+              text: e.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim(),
+              start: (e.tStartMs || 0) / 1000,
+            }))
+            .filter(e => e.text);
+        }
+      } catch (_) { /* no transcript available */ }
+      sendResponse({ videoId, currentTime, title, transcript });
+    })();
+    return true;
   }
 
   return true;
