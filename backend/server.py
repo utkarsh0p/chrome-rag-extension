@@ -238,8 +238,8 @@ async def chat(
 
         # Override lang if user explicitly named one in their query
         _lang_match = re.search(
-            r'c\+\+|(?i)\b(cpp|c#|csharp|python3?|java(?:script)?|typescript|golang?|rust|swift|kotlin|ruby|php|scala)\b',
-            body.query
+            r'c\+\+|\b(cpp|c#|csharp|python3?|java(?:script)?|typescript|golang?|rust|swift|kotlin|ruby|php|scala)\b',
+            body.query, re.IGNORECASE
         )
         if _lang_match:
             lang = _lang_match.group(0)
