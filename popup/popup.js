@@ -1,6 +1,6 @@
 // ── Backend URL — toggle one line to switch between local and production ──────
 // const BACKEND = 'http://localhost:5000';        // ← local testing
-const BACKEND   = 'https://chrome-rag-extension.onrender.com'; // ← production
+const BACKEND = 'https://chrome-rag-extension.onrender.com'; // ← production
 
 // ── Avatars ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,6 @@ function renderMarkdown(md) {
     .replace(/\*([^*\n]+)\*/g,    '<em>$1</em>')
     .replace(/_([^_\n]+)_/g,      '<em>$1</em>');
 
-  // Extract fenced code blocks before line processing
   const blocks = [];
   const MARK   = '\x00B';
   md = md.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
@@ -49,16 +48,12 @@ function renderMarkdown(md) {
 
   for (const raw of lines) {
     if (raw.includes(MARK)) { closeList(); out.push(raw); continue; }
-
     const hm = raw.match(/^(#{1,3})\s+(.*)/);
     if (hm) { closeList(); const lvl = Math.min(hm[1].length + 1, 4); out.push(`<h${lvl}>${inline(esc(hm[2]))}</h${lvl}>`); continue; }
-
     const ul = raw.match(/^[-*]\s+(.*)/);
     if (ul) { if (listTag !== 'ul') { closeList(); out.push('<ul>'); listTag = 'ul'; } out.push(`<li>${inline(esc(ul[1]))}</li>`); continue; }
-
     const ol = raw.match(/^\d+\.\s+(.*)/);
     if (ol) { if (listTag !== 'ol') { closeList(); out.push('<ol>'); listTag = 'ol'; } out.push(`<li>${inline(esc(ol[1]))}</li>`); continue; }
-
     closeList();
     if (raw.trim() === '') { out.push('<div class="md-gap"></div>'); continue; }
     out.push(`<p>${inline(esc(raw))}</p>`);
@@ -76,20 +71,15 @@ const GEMINI_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" xmlns="http
 
 const CLAUDE_ICON = `<svg fill="#c96442" fill-rule="evenodd" width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z"/></svg>`;
 
-const HF_ICON = `<span style="font-size:11px;line-height:1">🤗</span>`;
-
-// ── Provider metadata ─────────────────────────────────────────────────────────
+// ── Provider & model metadata ──────────────────────────────────────────────────
 
 const PROVIDERS = {
-  claude:      { label: 'Claude',    sub: 'Anthropic',   icon: CLAUDE_ICON },
-  gemini:      { label: 'Gemini',    sub: 'Google',      icon: GEMINI_ICON },
-  openai:      { label: 'GPT',       sub: 'OpenAI',      icon: OPENAI_ICON },
-  huggingface: { label: 'HuggingFace', sub: 'Inference', icon: HF_ICON     },
+  claude: { label: 'Claude', sub: 'Anthropic', icon: CLAUDE_ICON },
+  gemini: { label: 'Gemini', sub: 'Google',    icon: GEMINI_ICON },
+  openai: { label: 'GPT',    sub: 'OpenAI',    icon: OPENAI_ICON },
 };
 
-const PROVIDER_ORDER = ['claude', 'gemini', 'openai', 'huggingface'];
-
-// ── Models per provider ───────────────────────────────────────────────────────
+const PROVIDER_ORDER = ['claude', 'gemini', 'openai'];
 
 const MODELS = {
   openai: [
@@ -107,285 +97,205 @@ const MODELS = {
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6',   label: 'Claude Opus 4.6'   },
   ],
-  huggingface: [
-    { id: 'meta-llama/Llama-3.1-8B-Instruct',  label: 'Llama 3.1 8B'  },
-    { id: 'meta-llama/Llama-3.3-70B-Instruct', label: 'Llama 3.3 70B' },
-  ],
 };
+
+// ── Shared SSE stream reader ───────────────────────────────────────────────────
+
+async function readSSEStream(response, { onText, onMeta, onError }) {
+  const reader  = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.error)                            { onError?.(parsed.error); return; }
+          if ('used_rag' in parsed || 'tool' in parsed) { onMeta?.(parsed); continue; }
+          if (parsed.text)                               onText?.(parsed.text);
+        } catch { /* skip malformed line */ }
+      }
+    }
+  } catch (err) {
+    onError?.(err.message);
+  }
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  const askBtn          = document.getElementById('ask');
-  const input           = document.getElementById('query');
-  const settingsBtn     = document.getElementById('settingsBtn');
-  const responseArea    = document.getElementById('responseArea');
-  const thinkingRow     = document.getElementById('thinkingRow');
-  const answerSection   = document.getElementById('answerSection');
-  const answerBody      = document.getElementById('answerBody');
-  const answerHeaderLabel = document.getElementById('answerHeaderLabel');
-  const chatHistory     = document.getElementById('chatHistory');
-  const langSelector    = document.getElementById('langSelector');
-  const ytSelector      = document.getElementById('ytSelector');
-  const codeInjectBtn   = document.getElementById('codeInjectBtn');
+  const askBtn       = document.getElementById('ask');
+  const input        = document.getElementById('query');
+  const settingsBtn  = document.getElementById('settingsBtn');
+  const responseArea = document.getElementById('responseArea');
+  const chatHistory  = document.getElementById('chatHistory');
 
-  let chatMessages    = [];   // [{ role, content }] — in-memory only
-  let currentStreamEl = null;
+  // Overlay elements
+  const overlay      = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayList  = document.getElementById('overlayList');
+  const overlayClose = document.getElementById('overlayClose');
+  const overlayBack  = document.getElementById('overlayBack');
 
-  const LANGUAGES = [
-    'Python3','Python','Java','C++','C','C#',
-    'JavaScript','TypeScript','Go','Kotlin','Swift',
-    'Rust','Ruby','PHP','Dart','Scala','Racket','Erlang','Elixir',
-  ];
-  let selectedLanguage = 'Python3';
-
-  // Provider selector elements
+  // Selector elements
   const providerSelector = document.getElementById('providerSelector');
   const providerBtn      = document.getElementById('providerBtn');
   const providerBtnInner = document.getElementById('providerBtnInner');
   const providerIcon     = document.getElementById('providerIcon');
   const providerLabel    = document.getElementById('providerLabel');
+  const modelSelector    = document.getElementById('modelSelector');
+  const modelBtn         = document.getElementById('modelBtn');
+  const modelBtnInner    = document.getElementById('modelBtnInner');
+  const modelLabel       = document.getElementById('modelLabel');
 
-  // Model selector elements
-  const modelSelector  = document.getElementById('modelSelector');
-  const modelBtn       = document.getElementById('modelBtn');
-  const modelBtnInner  = document.getElementById('modelBtnInner');
-  const modelLabel     = document.getElementById('modelLabel');
+  let selectedProvider  = null;
+  let selectedModel     = null;
+  let savedApiKeys      = {};
+  let chatMessages      = [];
+  let currentStreamEl   = null;
+  let activeController  = null;
 
-  let selectedProvider = null;
-  let selectedModel    = null;
-  let savedApiKeys     = {};
-  let selectedMode     = 'rag'; // 'rag' | 'chat'
+  const STOP_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
+  const SEND_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
 
-  // ── Load saved keys ───────────────────────────────────────────────────────
-
-  const modeBtn = document.getElementById('modeBtn');
-
-  function renderModeBtn() {
-    const labels = { rag: 'RAG', chat: 'Chat', code: 'Code', youtube: 'YT' };
-    modeBtn.textContent = labels[selectedMode] || 'RAG';
-    modeBtn.className   = 'mode-badge' + (selectedMode !== 'rag' ? ' mode-chat' : '');
+  function setStopMode(on) {
+    askBtn.disabled = false;
+    askBtn.innerHTML = on ? STOP_ICON : SEND_ICON;
+    askBtn.classList.toggle('stop-mode', on);
+    if (!on) askBtn.disabled = !input.value.trim();
   }
 
-  modeBtn.addEventListener('click', () => showOverlay('whisper-modes'));
+  const CODE_TOOLS  = new Set(['explain_problem', 'suggest_approach', 'analyze_code', 'give_hint', 'solve_code']);
+  const TOOL_LABELS = {
+    explain_problem:  'Explanation',
+    suggest_approach: 'Approach',
+    analyze_code:     'Analysis',
+    give_hint:        'Hint',
+    solve_code:       'Solution',
+  };
 
-  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    const tabUrl = tab?.url || '';
+  const CODE_SITE_RE = /leetcode\.com\/problems\/|geeksforgeeks\.org\/problems\/|hackerrank\.com\/challenges\/|codeforces\.com\/problemset\/problem\//;
 
-    chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey', 'hfToken', 'selectedProvider', 'selectedModelId', 'selectedMode'], (res) => {
+  // ── Load saved state ───────────────────────────────────────────────────────
+
+  chrome.storage.local.get(
+    ['apiKeys', 'apiProvider', 'apiKey', 'selectedProvider', 'selectedModelId'],
+    (res) => {
       savedApiKeys = res.apiKeys || {};
 
       // Migrate legacy single-key storage
-      if (res.apiProvider && res.apiKey && !savedApiKeys[res.apiProvider]) {
+      if (res.apiProvider && res.apiKey && !savedApiKeys[res.apiProvider])
         savedApiKeys[res.apiProvider] = res.apiKey;
-      }
-      if (res.hfToken && !savedApiKeys.huggingface) {
-        savedApiKeys.huggingface = res.hfToken;
-      }
 
-      // Restore last selection, fall back to first available provider with a key
-      const lastProvider = res.selectedProvider && savedApiKeys[res.selectedProvider] ? res.selectedProvider : null;
-      const firstAvailable = PROVIDER_ORDER.find(p => savedApiKeys[p]) || null;
-      selectedProvider = lastProvider || firstAvailable;
+      const lastProvider = res.selectedProvider && savedApiKeys[res.selectedProvider]
+        ? res.selectedProvider : null;
+      selectedProvider = lastProvider || PROVIDER_ORDER.find(p => savedApiKeys[p]) || null;
 
       if (selectedProvider) {
         const models = MODELS[selectedProvider];
         selectedModel = models.find(m => m.id === res.selectedModelId) || models[0];
       }
 
-      if (res.selectedMode) selectedMode = res.selectedMode;
-
-      // Auto-detect specialized pages (overrides stored mode for this session)
-      if (tabUrl.includes('youtube.com/watch')) {
-        selectedMode = 'youtube';
-      } else if (tabUrl.match(/leetcode\.com\/problems\//)) {
-        selectedMode = 'code';
-      }
-
       renderProviderBtn();
       renderModelBtn();
-      renderModeBtn();
-      updatePlaceholder();
-    });
-  });
+    }
+  );
 
-  function updateModeUI() {
-    const placeholders = {
-      rag:  'Ask anything about this page…',
-      chat: 'Ask anything…',
-    };
-    input.placeholder = placeholders[selectedMode] || placeholders.rag;
+  // ── UI helpers ─────────────────────────────────────────────────────────────
 
-    const shell = document.querySelector('.popup-shell');
-    shell.classList.remove('mode-code', 'mode-youtube');
+  function showThinking() {
+    responseArea.classList.add('visible');
+    chatHistory.classList.add('visible');
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg ai';
+    wrap.id        = 'chatTyping';
+    wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div><div class="chat-bubble ai-bubble whispering-bubble"><span class="whispering-label">Whispering</span>${TYPING_SVG}</div>`;
+    chatHistory.appendChild(wrap);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
 
-    if (selectedMode === 'code') {
-      shell.classList.add('mode-code');
-      askBtn.disabled = false;
-      renderLangGrid();
-    } else if (selectedMode === 'youtube') {
-      shell.classList.add('mode-youtube');
-      renderYTSelector();
+  function startAnswer(toolName, usedRag, isYoutube) {
+    document.getElementById('chatTyping')?.remove();
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg ai';
+
+    if (toolName === 'solve_code') {
+      const codeBubble = document.createElement('div');
+      codeBubble.className = 'code-bubble';
+      codeBubble.innerHTML = `<pre><code></code></pre><button class="inject-btn" disabled>Inject into editor →</button>`;
+      wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div>`;
+      wrap.appendChild(codeBubble);
+      chatHistory.appendChild(wrap);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+      currentStreamEl = codeBubble.querySelector('code');
+      codeBubble.querySelector('.inject-btn').addEventListener('click', (e) => handleInject(e.currentTarget));
     } else {
-      askBtn.disabled = !input.value.trim();
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble ai-bubble';
+      if (CODE_TOOLS.has(toolName)) {
+        const badge = document.createElement('span');
+        badge.className   = 'source-badge';
+        badge.textContent = TOOL_LABELS[toolName] || 'Answer';
+        bubble.appendChild(badge);
+      } else if (usedRag) {
+        const badge = document.createElement('span');
+        badge.className   = 'source-badge';
+        badge.textContent = isYoutube ? '🎬 from video' : '📄 from page';
+        bubble.appendChild(badge);
+      }
+      // Separate text container so badge is never overwritten by streaming innerHTML
+      const textEl = document.createElement('div');
+      bubble.appendChild(textEl);
+      wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div>`;
+      wrap.appendChild(bubble);
+      chatHistory.appendChild(wrap);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+      currentStreamEl = textEl;
     }
   }
 
-  function renderLangGrid() {
-    langSelector.innerHTML = `
-      <div class="lang-grid" id="langGrid"></div>
-      <div class="lang-hint">Press ↵ to solve · use a strong reasoning model for best results</div>
-      <div class="lang-limit">Currently works on LeetCode only</div>`;
-    const grid = langSelector.querySelector('#langGrid');
-    LANGUAGES.forEach(lang => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'lang-btn' + (lang === selectedLanguage ? ' active' : '');
-      btn.textContent = lang;
-      btn.addEventListener('click', () => {
-        selectedLanguage = lang;
-        grid.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-      grid.appendChild(btn);
-    });
+  function showError(text) {
+    document.getElementById('chatTyping')?.remove();
+    responseArea.classList.add('visible');
+    chatHistory.classList.add('visible');
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg ai';
+    wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div><div class="chat-bubble ai-bubble error">${escHtml(text)}</div>`;
+    chatHistory.appendChild(wrap);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
   }
 
-  function renderYTSelector() {
-    ytSelector.innerHTML = `
-      <div class="yt-actions">
-        <button class="yt-btn" id="ytFullBtn" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg>
-          <span class="yt-btn-text">
-            <span class="yt-btn-label">Summarize full video</span>
-            <span class="yt-btn-sub">Get a structured overview of the entire video</span>
-          </span>
-        </button>
-        <button class="yt-btn" id="ytTimestampBtn" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span class="yt-btn-text">
-            <span class="yt-btn-label">Explain this moment</span>
-            <span class="yt-btn-sub">Explain what's being discussed right now</span>
-          </span>
-        </button>
-      </div>
-      <div class="yt-hint">use a strong model for best results</div>`;
-
-    document.getElementById('ytFullBtn').addEventListener('click', () => triggerYT('full'));
-    document.getElementById('ytTimestampBtn').addEventListener('click', () => triggerYT('timestamp'));
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  async function triggerYT(ytMode) {
-    if (!selectedProvider) { showError('No provider set. Open Settings (⚙) to add an API key.'); return; }
-    const key = savedApiKeys[selectedProvider];
-    if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
+  // ── Inject handler ─────────────────────────────────────────────────────────
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    function getYTData(cb) {
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (res) => {
-        if (chrome.runtime.lastError || !res) {
-          chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
-            if (chrome.runtime.lastError) { cb(null); return; }
-            chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (res2) => cb(res2));
-          });
-          return;
-        }
-        cb(res);
-      });
-    }
-
-    getYTData(async (ytData) => {
-      if (!ytData?.videoId) {
-        showError("Couldn't read this YouTube page. Make sure you're on a video page.");
-        return;
-      }
-      if (!ytData.transcript || ytData.transcript.length === 0) {
-        showError("No captions found for this video. Try a video with English captions enabled.");
-        return;
-      }
-
-      showThinking();
-
-      let response;
-      try {
-        response = await fetch(`${BACKEND}/ytexplain`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
-          body: JSON.stringify({
-            transcript: ytData.transcript || [],
-            mode: ytMode,
-            timestamp: ytMode === 'timestamp' ? ytData.currentTime : null,
-            model: selectedModel?.id,
-            provider: selectedProvider,
-          }),
-        });
-      } catch (err) {
-        showError('Could not reach backend: ' + err.message);
-        return;
-      }
-
-      if (!response.ok) {
-        try { const d = await response.json(); showError(d.detail || 'Backend error.'); }
-        catch { showError('Backend error ' + response.status); }
-        return;
-      }
-
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '', started = false, md = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const raw = line.slice(6).trim();
-            if (raw === '[DONE]') break;
-            try {
-              const parsed = JSON.parse(raw);
-              if (parsed.error) { showError(parsed.error); return; }
-              if (parsed.text) {
-                if (!started) { startAnswer(); started = true; }
-                md += parsed.text;
-                currentStreamEl.innerHTML = renderMarkdown(md);
-              }
-            } catch { /* skip */ }
-          }
-        }
-      } catch (err) {
-        if (!started) showError('Stream error: ' + err.message);
-      }
-    });
-  }
-
-  // ── Inject button (persistent handler for code mode) ──────────────────────
-
-  codeInjectBtn.addEventListener('click', async () => {
-    const code = codeInjectBtn.dataset.finalCode;
+  async function handleInject(btn) {
+    const code = btn.dataset.finalCode;
     if (!code) return;
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      world: 'MAIN',
+      world:  'MAIN',
       func: (c) => {
         try {
-          if (window.monaco && window.monaco.editor) {
+          if (window.monaco?.editor) {
             const models = window.monaco.editor.getModels();
             if (models.length > 0) { models[0].setValue(c); return { ok: true }; }
           }
         } catch (_) {}
         try {
           const ta = document.querySelector('.monaco-editor textarea');
-          if (ta) {
-            ta.focus();
-            document.execCommand('selectAll');
-            if (document.execCommand('insertText', false, c)) return { ok: true };
-          }
+          if (ta) { ta.focus(); document.execCommand('selectAll'); if (document.execCommand('insertText', false, c)) return { ok: true }; }
         } catch (_) {}
         try {
           const el = document.querySelector('.monaco-editor');
@@ -406,114 +316,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }, (results) => {
       const res = results?.[0]?.result;
       if (chrome.runtime.lastError || !res?.ok) {
-        codeInjectBtn.textContent = '✗ Inject failed — ' + (res?.error || chrome.runtime.lastError?.message || 'unknown');
-        codeInjectBtn.classList.add('inject-fail');
+        btn.textContent = '✗ Inject failed — ' + (res?.error || chrome.runtime.lastError?.message || 'unknown');
+        btn.classList.add('inject-fail');
       } else {
-        codeInjectBtn.textContent = '✓ Injected!';
-        codeInjectBtn.classList.add('inject-done');
-        codeInjectBtn.disabled = true;
+        btn.textContent = '✓ Injected!';
+        btn.classList.add('inject-done');
+        btn.disabled = true;
       }
     });
-  });
-
-  // Allow Enter key in code mode (textarea is hidden)
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && selectedMode === 'code' && !askBtn.disabled) {
-      e.preventDefault();
-      askBtn.click();
-    }
-  });
-
-  // Alias for callers that used the old name
-  function updatePlaceholder() { updateModeUI(); }
-
-  settingsBtn.addEventListener('click', () => showOverlay('menu'));
-
-  // ── State helpers ─────────────────────────────────────────────────────────
-
-  function showThinking() {
-    responseArea.classList.add('visible');
-    thinkingRow.classList.remove('visible');
-    codeInjectBtn.style.display = 'none';
-
-    if (selectedMode === 'chat') {
-      chatHistory.classList.add('visible');
-      answerSection.classList.remove('visible');
-      // Typing bubble inside chat
-      const wrap = document.createElement('div');
-      wrap.className = 'chat-msg ai';
-      wrap.id = 'chatTyping';
-      wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div><div class="chat-bubble ai-bubble whispering-bubble"><span class="whispering-label">Whispering</span>${TYPING_SVG}</div>`;
-      chatHistory.appendChild(wrap);
-      chatHistory.scrollTop = chatHistory.scrollHeight;
-    } else {
-      // RAG, Code, YouTube: whispering inside answerSection
-      chatHistory.classList.remove('visible');
-      answerSection.classList.add('visible');
-      const headerLabels = { code: 'Solution', youtube: 'Summary' };
-      answerHeaderLabel.textContent = headerLabels[selectedMode] || 'Answer';
-      answerBody.className = 'answer-body whispering-rag';
-      answerBody.innerHTML = `<span class="whispering-label">Whispering</span>${TYPING_SVG}`;
-    }
   }
 
-  function startAnswer() {
-    document.getElementById('chatTyping')?.remove();
-    if (selectedMode === 'chat') {
-      const wrap = document.createElement('div');
-      wrap.className = 'chat-msg ai';
-      const bubble = document.createElement('div');
-      bubble.className = 'chat-bubble ai-bubble';
-      wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div>`;
-      wrap.appendChild(bubble);
-      chatHistory.appendChild(wrap);
-      chatHistory.scrollTop = chatHistory.scrollHeight;
-      currentStreamEl = bubble;
-    } else if (selectedMode === 'code') {
-      answerBody.className = 'answer-body code-answer';
-      answerBody.innerHTML = '';
-      currentStreamEl = answerBody;
-    } else {
-      // RAG and YouTube — clear and stream
-      answerBody.className = 'answer-body';
-      answerBody.innerHTML = '';
-      currentStreamEl = answerBody;
-    }
-  }
-
-  function showError(text) {
-    document.getElementById('chatTyping')?.remove();
-    if (selectedMode === 'chat') {
-      const wrap = document.createElement('div');
-      wrap.className = 'chat-msg ai';
-      wrap.innerHTML = `<div class="chat-avatar ai-av">${AI_AVATAR_SVG}</div><div class="chat-bubble ai-bubble error">${escHtml(text)}</div>`;
-      chatHistory.appendChild(wrap);
-      chatHistory.scrollTop = chatHistory.scrollHeight;
-    } else {
-      responseArea.classList.add('visible');
-      answerSection.classList.add('visible');
-      answerBody.className = 'answer-body error';
-      answerBody.innerText = text;
-    }
-  }
-
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  // ── Provider button ───────────────────────────────────────────────────────
+  // ── Provider / model buttons ───────────────────────────────────────────────
 
   function renderProviderBtn() {
-    if (!selectedProvider) {
-      providerIcon.innerHTML  = '';
-      providerLabel.textContent = 'Provider';
-      return;
-    }
+    if (!selectedProvider) { providerIcon.innerHTML = ''; providerLabel.textContent = 'Provider'; return; }
     providerIcon.innerHTML    = PROVIDERS[selectedProvider].icon;
     providerLabel.textContent = PROVIDERS[selectedProvider].label;
   }
-
-  // ── Model button ──────────────────────────────────────────────────────────
 
   function renderModelBtn() {
     modelLabel.textContent = selectedModel ? selectedModel.label : 'Model';
@@ -525,13 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.classList.add('switching');
   }
 
-  // ── Overlay ───────────────────────────────────────────────────────────────
-
-  const overlay      = document.getElementById('overlay');
-  const overlayTitle = document.getElementById('overlayTitle');
-  const overlayList  = document.getElementById('overlayList');
-  const overlayClose = document.getElementById('overlayClose');
-  const overlayBack  = document.getElementById('overlayBack');
+  // ── Overlay ────────────────────────────────────────────────────────────────
 
   function showOverlay(mode, prevMode = null) {
     overlayList.innerHTML = '';
@@ -541,31 +354,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mode === 'menu') {
       overlayTitle.textContent = 'Menu';
 
-      const menuItems = [
+      const items = [
         {
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
-          label: 'Providers',
-          sub: 'Manage your API keys',
+          label: 'Providers', sub: 'Manage your API keys',
           action: () => { hideOverlay(); chrome.runtime.openOptionsPage(); },
-          disabled: false,
-        },
-        {
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h2l3-8 4 16 3-10 2 4 2-2h4"/></svg>`,
-          label: 'Whisper Modes',
-          sub: { rag: 'WhisperRAG active', chat: 'WhisperChat active', code: 'WhisperCode active', youtube: 'WhisperYT active' }[selectedMode] || 'WhisperRAG active',
-          action: () => showOverlay('whisper-modes', 'menu'),
-          disabled: false,
         },
         {
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-          label: 'About Us',
-          sub: 'Coming soon',
-          action: null,
-          disabled: true,
+          label: 'About Us', sub: 'Coming soon', disabled: true,
         },
       ];
 
-      menuItems.forEach(item => {
+      items.forEach(item => {
         const btn = document.createElement('button');
         btn.type      = 'button';
         btn.className = 'ov-option menu-option' + (item.disabled ? ' menu-disabled' : '');
@@ -585,78 +386,13 @@ document.addEventListener('DOMContentLoaded', () => {
         overlayList.appendChild(btn);
       });
 
-    } else if (mode === 'whisper-modes') {
-      overlayTitle.textContent = 'Whisper Modes';
-
-      const modes = [
-        {
-          key: 'rag',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>`,
-          label: 'WhisperRAG',
-          sub: "Chat with this page's content using semantic search",
-        },
-        {
-          key: 'chat',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-          label: 'WhisperChat',
-          sub: 'Chat directly with AI — no page context',
-        },
-        {
-          key: 'code',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
-          label: 'WhisperCode',
-          sub: 'Solve & inject code — LeetCode / coding sites',
-        },
-        {
-          key: 'youtube',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"/></svg>`,
-          label: 'WhisperYT',
-          sub: 'Summarize & explain YouTube videos',
-        },
-      ];
-
-      modes.forEach(m => {
-        const isActive = m.key === selectedMode;
-        const btn = document.createElement('button');
-        btn.type      = 'button';
-        btn.className = 'ov-option menu-option' + (isActive ? ' active' : '');
-        btn.innerHTML = `
-          <span class="ov-left">
-            <span class="ov-icon">${m.icon}</span>
-            <span class="ov-meta">
-              <span class="ov-name">${m.label}</span>
-              <span class="ov-sub">${m.sub}</span>
-            </span>
-          </span>
-          <svg class="ov-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
-        btn.addEventListener('click', () => {
-          selectedMode = m.key;
-          chrome.storage.local.set({ selectedMode });
-          renderModeBtn();
-          updatePlaceholder();
-          // Clear all output on mode change
-          responseArea.classList.remove('visible');
-          chatHistory.innerHTML = '';
-          chatHistory.classList.remove('visible');
-          answerSection.classList.remove('visible');
-          answerBody.className = 'answer-body';
-          answerBody.innerHTML = '';
-          codeInjectBtn.style.display = 'none';
-          chatMessages = [];
-          hideOverlay();
-        });
-        overlayList.appendChild(btn);
-      });
-
     } else if (mode === 'provider') {
       overlayTitle.textContent = 'Choose Provider';
-      providerSelector.classList.add('open');
 
       PROVIDER_ORDER.forEach(provKey => {
         const prov     = PROVIDERS[provKey];
         const hasKey   = !!savedApiKeys[provKey];
         const isActive = provKey === selectedProvider;
-
         const btn = document.createElement('button');
         btn.type      = 'button';
         btn.className = 'ov-option' + (isActive ? ' active' : '') + (!hasKey ? ' nokey' : '');
@@ -669,7 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </span>
           </span>
           <svg class="ov-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
-
         btn.addEventListener('click', () => {
           if (hasKey) {
             selectedProvider = provKey;
@@ -688,9 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
     } else {
+      // model picker
       overlayTitle.textContent = 'Choose Model';
-      modelSelector.classList.add('open');
-
       if (selectedProvider) {
         MODELS[selectedProvider].forEach(m => {
           const isActive = m.id === selectedModel?.id;
@@ -727,8 +461,136 @@ document.addEventListener('DOMContentLoaded', () => {
   overlayClose.addEventListener('click', hideOverlay);
   providerBtn.addEventListener('click', () => showOverlay('provider'));
   modelBtn.addEventListener('click',    () => showOverlay('model'));
+  settingsBtn.addEventListener('click', () => showOverlay('menu'));
 
-  // ── Textarea ──────────────────────────────────────────────────────────────
+  // ── Context fetching ───────────────────────────────────────────────────────
+
+  function getPageChunks(tab, cb) {
+    chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_DATA' }, (res) => {
+      if (chrome.runtime.lastError || !res) {
+        chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
+          if (chrome.runtime.lastError) { showError('Cannot access this page (try a regular http/https page).'); return; }
+          chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_DATA' }, (r2) => cb(r2?.chunks || null));
+        });
+        return;
+      }
+      cb(res?.chunks || null);
+    });
+  }
+
+  function getContextData(tab, onReady) {
+    const isYT = tab.url?.includes('youtube.com/watch');
+    getPageChunks(tab, (chunks) => {
+      if (!isYT) { onReady(chunks, null); return; }
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (ytRes) => {
+        if (chrome.runtime.lastError || !ytRes) {
+          chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
+            chrome.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_DATA' }, (ytRes2) => onReady(chunks, ytRes2));
+          });
+          return;
+        }
+        onReady(chunks, ytRes);
+      });
+    });
+  }
+
+  // ── Main handler ───────────────────────────────────────────────────────────
+
+  async function handleQuery(tab, query) {
+    const key = savedApiKeys[selectedProvider];
+    if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
+
+    async function doFetch(chunks, youtube, lcData) {
+      const leetcode = lcData?.description ? {
+        title:        lcData.title,
+        description:  lcData.description,
+        language:     lcData.language || 'Python3',
+        current_code: lcData.currentCode || null,
+      } : null;
+
+      activeController = new AbortController();
+      setStopMode(true);
+
+      let response;
+      try {
+        response = await fetch(`${BACKEND}/chat`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
+          signal:  activeController.signal,
+          body: JSON.stringify({
+            query,
+            chunks:   chunks || [],
+            model:    selectedModel?.id,
+            history:  chatMessages.slice(0, -1),
+            youtube,
+            leetcode,
+          }),
+        });
+      } catch (err) {
+        setStopMode(false);
+        if (err.name === 'AbortError') return;
+        showError('Could not reach backend: ' + err.message);
+        return;
+      }
+
+      if (!response.ok) {
+        try { const d = await response.json(); showError(d.detail || 'Backend error.'); }
+        catch { showError('Backend error ' + response.status); }
+        return;
+      }
+
+      let fullText = '', toolName = null, usedRag = false, isYoutube = false, started = false;
+
+      await readSSEStream(response, {
+        onMeta: (parsed) => { toolName = parsed.tool; usedRag = parsed.used_rag; isYoutube = parsed.is_youtube; },
+        onText: (text) => {
+          if (!started) { started = true; startAnswer(toolName, usedRag, isYoutube); }
+          fullText += text;
+          if (toolName === 'solve_code') {
+            currentStreamEl.textContent = fullText.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '');
+            currentStreamEl.closest('pre').scrollTop = currentStreamEl.closest('pre').scrollHeight;
+          } else {
+            currentStreamEl.innerHTML = renderMarkdown(fullText);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+          }
+        },
+        onError: (msg) => { if (!activeController?.signal.aborted) showError(msg); },
+      });
+
+      setStopMode(false);
+
+      if (toolName === 'solve_code' && fullText) {
+        const finalCode = fullText.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '');
+        const injectBtn = currentStreamEl?.closest('.code-bubble')?.querySelector('.inject-btn');
+        if (injectBtn) { injectBtn.dataset.finalCode = finalCode; injectBtn.disabled = false; }
+      }
+
+      if (fullText) chatMessages.push({ role: 'assistant', content: fullText });
+    }
+
+    getContextData(tab, async (chunks, ytData) => {
+      const youtube = ytData?.videoId
+        ? { video_id: ytData.videoId, current_time: ytData.currentTime ?? null }
+        : null;
+
+      if (tab.url?.match(CODE_SITE_RE)) {
+        chrome.tabs.sendMessage(tab.id, { type: 'GET_LEETCODE_DATA' }, async (lcRes) => {
+          if (chrome.runtime.lastError || !lcRes) {
+            chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
+              if (chrome.runtime.lastError) { showError('Cannot access this page.'); return; }
+              chrome.tabs.sendMessage(tab.id, { type: 'GET_LEETCODE_DATA' }, (lcRes2) => doFetch(chunks, youtube, lcRes2));
+            });
+            return;
+          }
+          await doFetch(chunks, youtube, lcRes);
+        });
+      } else {
+        await doFetch(chunks, youtube, null);
+      }
+    });
+  }
+
+  // ── Input handling ─────────────────────────────────────────────────────────
 
   input.addEventListener('input', () => {
     input.style.height = 'auto';
@@ -737,251 +599,42 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (!askBtn.disabled) askBtn.click();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!askBtn.disabled) askBtn.click(); }
   });
 
-  // ── Send ──────────────────────────────────────────────────────────────────
+  // ── Send button ────────────────────────────────────────────────────────────
 
   askBtn.addEventListener('click', async () => {
-    const query = selectedMode === 'code' ? '' : input.value.trim();
-    if (!query && selectedMode !== 'code') return;
-
-    if (!selectedProvider) {
-      showError('No provider set. Open Settings (⚙) to add an API key.');
+    if (askBtn.classList.contains('stop-mode')) {
+      activeController?.abort();
+      setStopMode(false);
+      document.getElementById('chatTyping')?.remove();
       return;
     }
 
+    const query = input.value.trim();
+    if (!query) return;
+    if (!selectedProvider) { showError('No provider set. Open Settings (⚙) to add an API key.'); return; }
+
     input.value        = '';
     input.style.height = 'auto';
-    if (selectedMode !== 'code') askBtn.disabled = true;
+    askBtn.disabled    = true;
     hideOverlay();
 
-    if (selectedMode === 'chat') {
-      // Append user bubble
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
       responseArea.classList.add('visible');
       chatHistory.classList.add('visible');
-      answerSection.classList.remove('visible');
       const userWrap = document.createElement('div');
       userWrap.className = 'chat-msg user';
       userWrap.innerHTML = `<div class="chat-bubble user-bubble">${escHtml(query)}</div><div class="chat-avatar user-av">${USER_AVATAR_SVG}</div>`;
       chatHistory.appendChild(userWrap);
       chatHistory.scrollTop = chatHistory.scrollHeight;
       chatMessages.push({ role: 'user', content: query });
-    }
 
-    // code mode handles its own UI inside solveCode
-    if (selectedMode !== 'code') showThinking();
-
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-      async function streamFromBackend(chunks) {
-        const key = savedApiKeys[selectedProvider];
-        if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
-
-        const isChat = selectedMode === 'chat';
-        const url    = isChat ? `${BACKEND}/chat` : `${BACKEND}/rag`;
-        const body   = isChat
-          ? { query, model: selectedModel?.id, provider: selectedProvider, history: chatMessages.slice(0, -1) }
-          : { query, chunks, model: selectedModel?.id, provider: selectedProvider };
-
-        let response;
-        try {
-          response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Token':    key,
-              'Provider': selectedProvider,
-            },
-            body: JSON.stringify(body),
-          });
-        } catch (err) {
-          showError('Could not reach backend: ' + err.message);
-          return;
-        }
-
-        if (!response.ok) {
-          try { const d = await response.json(); showError(d.detail || 'Backend error.'); }
-          catch { showError('Backend error ' + response.status); }
-          return;
-        }
-
-        const reader  = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullText = '';
-        let buffer   = '';
-        let started  = false;
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();                          // keep incomplete line
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const raw = line.slice(6).trim();
-              if (raw === '[DONE]') return;
-              try {
-                const parsed = JSON.parse(raw);
-                if (parsed.error) { showError(parsed.error); return; }
-                if (parsed.text) {
-                  if (!started) { started = true; startAnswer(); }
-                  fullText += parsed.text;
-                  currentStreamEl.innerHTML = renderMarkdown(fullText);
-                  (selectedMode === 'chat' ? chatHistory : answerBody).scrollTop = 99999;
-                }
-              } catch { /* skip malformed SSE line */ }
-            }
-          }
-        } catch (err) {
-          if (!fullText) showError('Stream error: ' + err.message);
-        }
-        // Save AI response to history
-        if (selectedMode === 'chat' && fullText) {
-          chatMessages.push({ role: 'assistant', content: fullText });
-        }
-      }
-
-      function getPageData() {
-        chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_DATA' }, (response) => {
-          if (chrome.runtime.lastError || !response?.chunks) {
-            chrome.scripting.executeScript(
-              { target: { tabId: tab.id }, files: ['content.js'] },
-              () => {
-                if (chrome.runtime.lastError) {
-                  showError('Cannot access this page (try a regular http/https page).');
-                  return;
-                }
-                chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_DATA' }, (resp2) => {
-                  if (!resp2?.chunks) { showError('Could not read page content.'); return; }
-                  streamFromBackend(resp2.chunks);
-                });
-              }
-            );
-            return;
-          }
-          streamFromBackend(response.chunks);
-        });
-      }
-
-      async function solveCode(tab, instruction) {
-        // Must be on a LeetCode problem page
-        if (!tab.url || !tab.url.match(/^https?:\/\/(www\.)?leetcode\.com\/problems\//)) {
-          showError('Open a LeetCode problem page first, then use WhisperCode.');
-          return;
-        }
-
-        // Inject content script if needed, then scrape LeetCode data
-        function getLCData(cb) {
-          chrome.tabs.sendMessage(tab.id, { type: 'GET_LEETCODE_DATA' }, (res) => {
-            if (chrome.runtime.lastError || !res) {
-              chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }, () => {
-                if (chrome.runtime.lastError) { showError('Cannot access this page.'); return; }
-                chrome.tabs.sendMessage(tab.id, { type: 'GET_LEETCODE_DATA' }, (res2) => cb(res2));
-              });
-              return;
-            }
-            cb(res);
-          });
-        }
-
-        getLCData(async (lcData) => {
-          if (!lcData || !lcData.description) {
-            showError('Could not read the problem. Make sure the page is fully loaded.');
-            return;
-          }
-
-          const key = savedApiKeys[selectedProvider];
-          if (!key) { showError('No API key for this provider. Open Settings (⚙).'); return; }
-
-          showThinking();
-
-          let response;
-          try {
-            response = await fetch(`${BACKEND}/code`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Token': key, 'Provider': selectedProvider },
-              body: JSON.stringify({
-                title:        lcData.title,
-                description:  lcData.description,
-                language:     selectedLanguage,
-                current_code: lcData.currentCode,
-                instruction:  instruction || null,
-                model:        selectedModel?.id,
-                provider:     selectedProvider,
-              }),
-            });
-          } catch (err) {
-            showError('Could not reach backend: ' + err.message);
-            return;
-          }
-
-          if (!response.ok) {
-            try { const d = await response.json(); showError(d.detail || 'Backend error.'); }
-            catch { showError('Backend error ' + response.status); }
-            return;
-          }
-
-          const reader  = response.body.getReader();
-          const decoder = new TextDecoder();
-          let fullCode    = '';
-          let buffer      = '';
-          let codeStarted = false;
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop();
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const raw = line.slice(6).trim();
-                if (raw === '[DONE]') break;
-                try {
-                  const parsed = JSON.parse(raw);
-                  if (parsed.error) { showError(parsed.error); return; }
-                  if (parsed.text) {
-                    if (!codeStarted) {
-                      codeStarted = true;
-                      startAnswer(); // clears whispering, sets up dark code answerBody
-                    }
-                    fullCode += parsed.text;
-                    currentStreamEl.textContent = fullCode.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'');
-                    answerBody.scrollTop = answerBody.scrollHeight;
-                  }
-                } catch { /* skip */ }
-              }
-            }
-          } catch (err) {
-            if (!fullCode) { showError('Stream error: ' + err.message); return; }
-          }
-
-          // Show inject button
-          const finalCode = fullCode.replace(/^```[\w]*\n?/,'').replace(/\n?```$/,'');
-          codeInjectBtn.dataset.finalCode = finalCode;
-          codeInjectBtn.textContent = 'Inject into editor →';
-          codeInjectBtn.className = 'inject-btn-header';
-          codeInjectBtn.disabled = false;
-          codeInjectBtn.style.display = 'block';
-        });
-      }
-
-      if (selectedMode === 'chat') {
-        streamFromBackend([]);
-      } else if (selectedMode === 'code') {
-        solveCode(tab, query);
-      } else {
-        getPageData();
-      }
-
+      showThinking();
+      handleQuery(tab, query);
     } catch (err) {
       showError('Unexpected error: ' + err.message);
     }

@@ -1,19 +1,16 @@
-const PROVIDERS = ['claude', 'gemini', 'openai', 'huggingface'];
+const PROVIDERS = ['claude', 'gemini', 'openai'];
 
 // Load saved status — never pre-fill keys, just show "Saved" badge
-chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey', 'hfToken'], (res) => {
+chrome.storage.local.get(['apiKeys', 'apiProvider', 'apiKey'], (res) => {
   const apiKeys = res.apiKeys || {};
 
   // Migrate legacy single-key storage into apiKeys
   if (res.apiProvider && res.apiKey && !apiKeys[res.apiProvider]) {
     apiKeys[res.apiProvider] = res.apiKey;
   }
-  if (res.hfToken && !apiKeys.huggingface) {
-    apiKeys.huggingface = res.hfToken;
-  }
 
   // If migration happened, persist merged keys
-  if (res.apiProvider || res.hfToken) {
+  if (res.apiProvider) {
     chrome.storage.local.set({ apiKeys });
   }
 

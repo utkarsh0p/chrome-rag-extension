@@ -106,123 +106,6 @@ body {
   color: #b0b0a8;
 }
 
-/* ── YouTube mode ────────────────────────────────────────────────────────────── */
-
-.yt-selector { display: none; padding: 14px 16px 8px; }
-
-.popup-shell.mode-youtube .input-card textarea { display: none; }
-.popup-shell.mode-youtube .yt-selector         { display: block; }
-.popup-shell.mode-youtube .send-btn            { display: none; }
-
-.yt-actions { display: flex; flex-direction: column; gap: 7px; }
-
-.yt-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 11px 14px;
-  border-radius: 10px;
-  border: 1.5px solid #e8e8e4;
-  background: #fafaf8;
-  font-size: 13px;
-  font-family: inherit;
-  color: #1a1a1a;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.yt-btn:hover { background: #f0f0ec; border-color: #d0d0c8; }
-
-.yt-btn svg { flex-shrink: 0; color: #888; }
-
-.yt-btn .yt-btn-label { font-weight: 500; }
-
-.yt-btn .yt-btn-sub { font-size: 11px; color: #a8a8a0; margin-top: 1px; }
-
-.yt-btn-text { display: flex; flex-direction: column; }
-
-.yt-hint {
-  font-size: 11px;
-  color: #a8a8a0;
-  text-align: center;
-  padding: 7px 0 2px;
-}
-
-/* ── Code mode: language selector (replaces textarea) ───────────────────────── */
-
-.lang-selector {
-  display: none;
-  padding: 14px 16px 8px;
-}
-
-.popup-shell.mode-code .input-card textarea { display: none; }
-.popup-shell.mode-code .lang-selector       { display: block; }
-
-.lang-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 10px;
-}
-
-.lang-btn {
-  padding: 4px 11px;
-  border-radius: 7px;
-  border: 1.5px solid #e8e8e4;
-  background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  color: #555550;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-
-.lang-btn:hover { background: #f0f0ec; }
-
-.lang-btn.active {
-  background: #1a1a1a;
-  border-color: #1a1a1a;
-  color: #fafaf8;
-}
-
-.lang-hint {
-  font-size: 12px;
-  color: #b0b0a8;
-  text-align: center;
-  padding-bottom: 4px;
-}
-
-.lang-limit {
-  font-size: 12px;
-  font-weight: 700;
-  color: #1a1a1a;
-  text-align: center;
-  padding-bottom: 2px;
-}
-
-/* ── Code answer (dark, in answerSection) ────────────────────────────────────── */
-
-.answer-body.code-answer {
-  background: #000000 !important;
-  border-radius: 10px !important;
-  padding: 14px 16px !important;
-  max-height: 220px !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  color: #d4d4d4 !important;
-  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace !important;
-  font-size: 13px !important;
-  line-height: 1.65 !important;
-  white-space: pre-wrap !important;
-  word-break: break-all !important;
-}
-
-.answer-body.code-answer::-webkit-scrollbar { width: 3px; }
-.answer-body.code-answer::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
-
 /* ── Toolbar ─────────────────────────────────────────────────────────────────── */
 
 .input-footer {
@@ -416,6 +299,8 @@ body {
 
 .send-btn:disabled { opacity: 0.2; cursor: not-allowed; }
 .send-btn:not(:disabled):hover { opacity: 0.82; transform: scale(1.05); }
+.send-btn.stop-mode { background: #e53e3e; }
+.send-btn.stop-mode:hover { opacity: 1; background: #c53030; transform: scale(1.05); }
 
 /* ── Response area ───────────────────────────────────────────────────────────── */
 
@@ -429,11 +314,7 @@ body {
 
 .response-area.visible { display: flex; }
 
-/* Thinking state (legacy row — kept for fallback) */
-.thinking-row { display: none; }
-.thinking-row.visible { display: flex; }
-
-/* Whispering label used inside chat bubble and RAG body */
+/* Whispering label used inside chat bubble */
 .whispering-label {
   font-size: 13px;
   font-weight: 500;
@@ -442,7 +323,6 @@ body {
   letter-spacing: 0.01em;
 }
 
-/* Inside an AI chat bubble */
 .whispering-bubble {
   display: flex;
   align-items: center;
@@ -450,119 +330,7 @@ body {
   padding: 2px 0;
 }
 
-/* Inside RAG answerBody */
-.answer-body.whispering-rag {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 0;
-}
-
 .dots-anim { flex-shrink: 0; }
-
-/* Answer state */
-.answer-section { display: none; }
-.answer-section.visible { display: block; }
-
-.answer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 7px;
-  padding: 14px 0 10px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #1a1a1a;
-  letter-spacing: -0.1px;
-}
-
-.answer-header svg { color: #555550; flex-shrink: 0; }
-
-/* Inject button inside the answer header (code mode) */
-.inject-btn-header {
-  display: none;
-  padding: 4px 12px;
-  border: none;
-  border-radius: 7px;
-  background: #1a1a1a;
-  color: #fafaf8;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.inject-btn-header:hover:not(:disabled) { background: #333; }
-.inject-btn-header:disabled             { opacity: 0.4; cursor: not-allowed; }
-.inject-btn-header.inject-done          { background: #1e4d2b; color: #6fcf97; cursor: default; }
-.inject-btn-header.inject-fail          { background: #4d1e1e; color: #eb5757; cursor: default; font-size: 11px; }
-
-.answer-body {
-  font-size: 15px;
-  line-height: 1.7;
-  color: #2a2a28;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 4px;
-  word-break: break-word;
-}
-
-/* ── Markdown elements ───────────────────────────────────────────────────────── */
-
-.answer-body p { margin-bottom: 7px; }
-.answer-body p:last-child { margin-bottom: 0; }
-
-.answer-body h2 { font-size: 14.5px; font-weight: 700; color: #1a1a1a; margin: 12px 0 4px; letter-spacing: -0.1px; }
-.answer-body h3 { font-size: 13.5px; font-weight: 650; color: #1a1a1a; margin: 10px 0 3px; }
-.answer-body h4 { font-size: 13px;   font-weight: 600; color: #1a1a1a; margin: 8px 0 3px;  }
-.answer-body h2:first-child,
-.answer-body h3:first-child,
-.answer-body h4:first-child { margin-top: 0; }
-
-.answer-body strong { font-weight: 650; color: #1a1a1a; }
-.answer-body em { font-style: italic; color: #444440; }
-
-.answer-body ul,
-.answer-body ol { padding-left: 18px; margin: 2px 0 7px; }
-.answer-body li { margin-bottom: 3px; line-height: 1.65; }
-.answer-body li:last-child { margin-bottom: 0; }
-
-.answer-body code {
-  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
-  font-size: 12.5px;
-  background: #f0f0eb;
-  border-radius: 4px;
-  padding: 1px 5px;
-  color: #c25c2a;
-}
-
-.answer-body pre {
-  background: #f5f5f0;
-  border: 1px solid #e8e8e4;
-  border-radius: 8px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  margin: 6px 0 8px;
-}
-.answer-body pre code {
-  background: none;
-  padding: 0;
-  color: #2a2a28;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.md-gap { height: 5px; }
-
-/* Thin scrollbar on answer */
-.answer-body::-webkit-scrollbar { width: 3px; }
-.answer-body::-webkit-scrollbar-track { background: transparent; }
-.answer-body::-webkit-scrollbar-thumb { background: #d4d4cc; border-radius: 4px; }
-
-/* Error styling */
-.answer-body.error { color: #b54a4a; font-size: 14px; }
 
 /* ── Chat history ────────────────────────────────────────────────────────────── */
 
@@ -618,6 +386,17 @@ body {
 }
 .ai-bubble.error { color: #b54a4a; font-size: 13px; }
 
+.source-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #a8a8a0;
+  background: rgba(0,0,0,0.05);
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin-bottom: 6px;
+  letter-spacing: 0.1px;
+}
+
 /* Markdown inside AI bubbles */
 .ai-bubble p              { margin-bottom: 6px; }
 .ai-bubble p:last-child   { margin-bottom: 0; }
@@ -647,7 +426,7 @@ body {
 .ai-bubble pre code { background: none; padding: 0; color: #2a2a28; font-size: 11.5px; }
 .ai-bubble .md-gap { height: 4px; }
 
-/* ── Code bubble (WhisperCode) ───────────────────────────────────────────────── */
+/* ── Code bubble (solve_code answers) ───────────────────────────────────────── */
 
 .code-bubble {
   background: #1e1e1e;
@@ -696,26 +475,6 @@ body {
 .inject-btn:disabled              { opacity: 0.4; cursor: not-allowed; }
 .inject-btn.inject-done           { background: #1e4d2b; color: #6fcf97; cursor: default; }
 .inject-btn.inject-fail           { background: #4d1e1e; color: #eb5757; cursor: default; font-size: 11px; }
-
-/* ── Mode badge ──────────────────────────────────────────────────────────────── */
-
-.mode-badge {
-  display: flex;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1.5px solid #e0e0da;
-  border-radius: 6px;
-  background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  color: #666660;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.mode-badge:hover     { background: rgba(0,0,0,0.05); border-color: #c8c8c0; color: #1a1a1a; }
-.mode-badge.mode-chat { border-color: #1a1a1a; color: #1a1a1a; background: #f0f0eb; }
 
 /* ── Overlay back button ─────────────────────────────────────────────────────── */
 

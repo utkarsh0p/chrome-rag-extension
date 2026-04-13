@@ -8,57 +8,6 @@ function chunkText(text, chunkSize = 500) {
   return chunks;
 }
 
-// ── Inject code into Monaco Editor (LeetCode) ────────────────────────────────
-
-function injectIntoMonaco(code) {
-  // Strategy 1: Monaco global API
-  try {
-    if (window.monaco && window.monaco.editor) {
-      const models = window.monaco.editor.getModels();
-      if (models.length > 0) {
-        models[0].setValue(code);
-        return { ok: true, strategy: 'monaco-api' };
-      }
-    }
-  } catch (_) {}
-
-  // Strategy 2: execCommand via hidden textarea Monaco uses internally
-  try {
-    const textarea = document.querySelector('.monaco-editor textarea');
-    if (textarea) {
-      textarea.focus();
-      document.execCommand('selectAll');
-      const success = document.execCommand('insertText', false, code);
-      if (success) return { ok: true, strategy: 'execCommand' };
-    }
-  } catch (_) {}
-
-  // Strategy 3: Walk React fiber tree to find editor.setValue
-  try {
-    const editorEl = document.querySelector('.monaco-editor');
-    if (editorEl) {
-      const fiberKey = Object.keys(editorEl).find(k =>
-        k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance')
-      );
-      if (fiberKey) {
-        let fiber = editorEl[fiberKey];
-        let depth = 0;
-        while (fiber && depth < 200) {
-          const si = fiber.stateNode;
-          if (si && si.editor && typeof si.editor.setValue === 'function') {
-            si.editor.setValue(code);
-            return { ok: true, strategy: 'react-fiber' };
-          }
-          fiber = fiber.return;
-          depth++;
-        }
-      }
-    }
-  } catch (_) {}
-
-  return { ok: false, error: 'Could not find Monaco editor on this page.' };
-}
-
 // ── Scrape LeetCode problem ───────────────────────────────────────────────────
 
 function getLeetCodeData() {
@@ -101,41 +50,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse(getLeetCodeData());
   }
 
-  if (message.type === 'INJECT_CODE') {
-    sendResponse(injectIntoMonaco(message.code));
-  }
-
   if (message.type === 'GET_YOUTUBE_DATA') {
     const video       = document.querySelector('video');
     const currentTime = video ? Math.floor(video.currentTime) : 0;
+    const duration    = video ? Math.floor(video.duration)    : 0;
     const videoId     = new URLSearchParams(window.location.search).get('v') || '';
     const titleEl     = document.querySelector(
       'h1.ytd-video-primary-info-renderer yt-formatted-string, #title h1 yt-formatted-string, #above-the-fold h1 yt-formatted-string'
     );
     const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '').trim();
-
-    // Fetch transcript from user's browser using YouTube's embedded player data
-    (async () => {
-      let transcript = null;
-      try {
-        const playerData = window.ytInitialPlayerResponse;
-        const tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-        if (tracks && tracks.length > 0) {
-          const track = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
-          const resp = await fetch(track.baseUrl + '&fmt=json3');
-          const data = await resp.json();
-          transcript = (data.events || [])
-            .filter(e => e.segs)
-            .map(e => ({
-              text: e.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim(),
-              start: (e.tStartMs || 0) / 1000,
-            }))
-            .filter(e => e.text);
-        }
-      } catch (_) { /* no transcript available */ }
-      sendResponse({ videoId, currentTime, title, transcript });
-    })();
-    return true;
+    sendResponse({ videoId, currentTime, duration, title });
   }
 
   return true;

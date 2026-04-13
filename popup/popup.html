@@ -55,18 +55,9 @@
           rows="1"
         ></textarea>
 
-        <!-- Code mode: language picker (shown instead of textarea) -->
-        <div class="lang-selector" id="langSelector"></div>
-
-        <!-- YouTube mode: action picker (shown instead of textarea) -->
-        <div class="yt-selector" id="ytSelector"></div>
-
         <div class="input-footer">
           <!-- Provider + Model selectors -->
           <div class="selectors-row">
-            <button class="mode-badge" id="modeBtn" type="button">RAG</button>
-            <span class="sel-sep" style="margin:0 4px 0 2px">·</span>
-
             <div class="sel-wrap" id="providerSelector">
               <button class="sel-btn" id="providerBtn" type="button">
                 <span class="sel-inner" id="providerBtnInner">
@@ -87,7 +78,6 @@
                 </span>
               </button>
             </div>
-
           </div>
 
           <!-- Send button -->
@@ -100,38 +90,9 @@
       </div>
     </div>
 
-    <!-- ── Response area (hidden until first query) ── -->
+    <!-- ── Response area ── -->
     <div class="response-area" id="responseArea">
-
-      <!-- Chat mode history -->
       <div class="chat-history" id="chatHistory"></div>
-
-      <!-- Thinking state (RAG only) -->
-      <div class="thinking-row" id="thinkingRow">
-        <span class="thinking-text">Whispering</span>
-        <!-- Bouncing dots (MessageLoading SVG) -->
-        <svg class="dots-anim" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="4" cy="12" r="2" fill="currentColor">
-            <animate id="spinner_qFRN" begin="0;spinner_OcgL.end+0.25s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
-          </circle>
-          <circle cx="12" cy="12" r="2" fill="currentColor">
-            <animate begin="spinner_qFRN.begin+0.1s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
-          </circle>
-          <circle cx="20" cy="12" r="2" fill="currentColor">
-            <animate id="spinner_OcgL" begin="spinner_qFRN.begin+0.2s" attributeName="cy" calcMode="spline" dur="0.6s" values="12;6;12" keySplines=".33,.66,.66,1;.33,0,.66,.33"/>
-          </circle>
-        </svg>
-      </div>
-
-      <!-- Answer state -->
-      <div class="answer-section" id="answerSection">
-        <div class="answer-header" id="answerHeader">
-          <span id="answerHeaderLabel">Answer</span>
-          <button class="inject-btn-header" id="codeInjectBtn" disabled>Inject into editor →</button>
-        </div>
-        <div class="answer-body" id="answerBody"></div>
-      </div>
-
     </div>
 
     <!-- ── Full-screen selector overlay ── -->
