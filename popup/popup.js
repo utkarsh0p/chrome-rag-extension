@@ -1,6 +1,6 @@
 // ── Backend URL — toggle one line to switch between local and production ──────
-const BACKEND = 'http://localhost:5000';        // ← local testing
-// const BACKEND = 'https://chrome-rag-extension.onrender.com'; // ← production
+// const BACKEND = 'http://localhost:5000';        // ← local testing
+const BACKEND = 'https://chrome-rag-extension.onrender.com'; // ← production
 
 // ── Avatars ───────────────────────────────────────────────────────────────────
 
